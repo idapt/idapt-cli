@@ -18,10 +18,16 @@ type Config struct {
 	// Domain is the machine's subdomain (e.g., "my-machine.idapt.app").
 	Domain string `json:"domain"`
 
-	// JWTSecret is the base secret for HKDF key derivation (shared with the app).
-	JWTSecret string `json:"jwtSecret"`
+	// JWTPublicKeyPEM is the PEM-encoded EC P-256 public key for ES256 JWT verification.
+	// Populated from inline config or read from JWTPublicKeyFile.
+	JWTPublicKeyPEM string `json:"jwtPublicKeyPEM"`
+
+	// JWTPublicKeyFile is the path to a PEM-encoded EC public key file.
+	// If set, the file is read and its contents populate JWTPublicKeyPEM.
+	JWTPublicKeyFile string `json:"jwtPublicKeyFile"`
 
 	// MachineToken is an HMAC key for machine-level API auth (heartbeat, firewall).
+	// Optional — heartbeat auth is deferred to a follow-up.
 	MachineToken string `json:"machineToken"`
 
 	// ACMEEmail is the email address for Let's Encrypt registration.
@@ -56,14 +62,26 @@ func Load(path string) (*Config, error) {
 	if v := os.Getenv("IDAPT_DOMAIN"); v != "" {
 		cfg.Domain = v
 	}
-	if v := os.Getenv("IDAPT_JWT_SECRET"); v != "" {
-		cfg.JWTSecret = v
+	if v := os.Getenv("IDAPT_JWT_PUBLIC_KEY_PEM"); v != "" {
+		cfg.JWTPublicKeyPEM = v
+	}
+	if v := os.Getenv("IDAPT_JWT_PUBLIC_KEY_FILE"); v != "" {
+		cfg.JWTPublicKeyFile = v
 	}
 	if v := os.Getenv("IDAPT_MACHINE_TOKEN"); v != "" {
 		cfg.MachineToken = v
 	}
 	if v := os.Getenv("IDAPT_ACME_EMAIL"); v != "" {
 		cfg.ACMEEmail = v
+	}
+
+	// Load public key from file if specified (file takes precedence over inline PEM)
+	if cfg.JWTPublicKeyFile != "" {
+		pemData, err := os.ReadFile(cfg.JWTPublicKeyFile)
+		if err != nil {
+			return nil, fmt.Errorf("read JWT public key file %s: %w", cfg.JWTPublicKeyFile, err)
+		}
+		cfg.JWTPublicKeyPEM = string(pemData)
 	}
 
 	// Defaults
@@ -87,12 +105,10 @@ func Load(path string) (*Config, error) {
 	if strings.Contains(cfg.Domain, "*") {
 		return nil, fmt.Errorf("domain must be a specific subdomain, not a wildcard: %s", cfg.Domain)
 	}
-	if cfg.JWTSecret == "" {
-		return nil, fmt.Errorf("jwtSecret is required")
+	if cfg.JWTPublicKeyPEM == "" {
+		return nil, fmt.Errorf("jwtPublicKeyPEM or jwtPublicKeyFile is required")
 	}
-	if cfg.MachineToken == "" {
-		return nil, fmt.Errorf("machineToken is required")
-	}
+	// MachineToken is intentionally optional — heartbeat auth is deferred
 
 	return &cfg, nil
 }

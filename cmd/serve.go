@@ -44,7 +44,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	log.Printf("idapt %s starting for machine %s (domain: %s)", Version, cfg.MachineID, cfg.Domain)
 
 	// Initialize components
-	jwtValidator, err := auth.NewJWTValidator(cfg.JWTSecret, cfg.MachineID)
+	jwtValidator, err := auth.NewJWTValidator(cfg.JWTPublicKeyPEM, cfg.MachineID)
 	if err != nil {
 		return fmt.Errorf("failed to init JWT validator: %w", err)
 	}
@@ -58,7 +58,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	proxyCfg := proxy.NewConfigManager(proxy.DefaultConfigPath)
 
 	// Auth middleware — uses proxy config for per-port auth mode (not firewall)
-	authMiddleware := auth.NewMiddleware(jwtValidator, apiKeyValidator, proxyCfg, pages)
+	authMiddleware := auth.NewMiddleware(jwtValidator, apiKeyValidator, proxyCfg, pages, cfg.Domain, cfg.AppURL)
 
 	// HTTP mux
 	mux := http.NewServeMux()
@@ -117,11 +117,15 @@ func runServe(cmd *cobra.Command, args []string) error {
 		Handler: httpHandler,
 	}
 
-	// Start heartbeat
-	hb := heartbeat.New(cfg.AppURL, cfg.MachineID, cfg.MachineToken, Version)
+	// Start heartbeat (only if machineToken is configured — heartbeat auth is deferred)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go hb.Start(ctx)
+	if cfg.MachineToken != "" {
+		hb := heartbeat.New(cfg.AppURL, cfg.MachineID, cfg.MachineToken, Version)
+		go hb.Start(ctx)
+	} else {
+		log.Printf("heartbeat: disabled (machineToken not configured)")
+	}
 
 	// Start servers
 	errCh := make(chan error, 10)

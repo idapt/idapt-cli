@@ -1,58 +1,35 @@
 {
-  "description": "Cross-language crypto test vectors for Go and TypeScript parity",
-  "hkdf_vectors": [
+  "description": "Cross-language crypto test vectors for Go and TypeScript ES256 JWT parity",
+  "es256_jwt_vectors": [
     {
-      "secret": "test-secret-for-vectors",
-      "purpose": "managed-machine",
-      "expected_key_length": 32
-    },
-    {
-      "secret": "test-secret-for-vectors",
-      "purpose": "verification",
-      "expected_key_length": 32
-    }
-  ],
-  "jwt_vectors": [
-    {
-      "description": "valid token for machine mm_123",
-      "secret": "test-secret-for-vectors",
-      "purpose": "managed-machine",
+      "description": "valid ES256 token for machine mm_123",
+      "public_key_pem": "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEO8Tv6TwuSgFUTwvefMaXUPl29NDR\ndzeZXYq/t9mI5WFEskZY8Ch9CmGH7glpxR5VBXlGIbvbEnWoumJ8FrW9PQ==\n-----END PUBLIC KEY-----",
+      "token": "eyJhbGciOiJFUzI1NiIsImtpZCI6IjEifQ.eyJtaWQiOiJtbV8xMjMiLCJzdWIiOiJhY3Rvcl80NTYiLCJpYXQiOjE3MDAwMDAwMDAsImV4cCI6OTk5OTk5OTk5OX0.nA3a-OFngdJ0dMb_Zeh-WB6x2cQ9E8T-fdLBQ2Cm9pJVKHEyblianTtR2skx2xWghvVBROfO9qyW4pzBU93SiA",
       "machine_id": "mm_123",
-      "claims": {
-        "sub": "actor_456",
-        "mid": "mm_123",
-        "exp": 9999999999,
-        "iat": 1700000000
-      },
       "should_validate": true
     },
     {
-      "description": "expired token",
-      "secret": "test-secret-for-vectors",
-      "purpose": "managed-machine",
+      "description": "expired ES256 token",
+      "public_key_pem": "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEO8Tv6TwuSgFUTwvefMaXUPl29NDR\ndzeZXYq/t9mI5WFEskZY8Ch9CmGH7glpxR5VBXlGIbvbEnWoumJ8FrW9PQ==\n-----END PUBLIC KEY-----",
+      "token": "eyJhbGciOiJFUzI1NiIsImtpZCI6IjEifQ.eyJtaWQiOiJtbV8xMjMiLCJzdWIiOiJhY3Rvcl80NTYiLCJpYXQiOjk5OTk5OTAwMCwiZXhwIjoxMDAwMDAwMDAwfQ.GRTVVaci8Pp7lkgcb1oiJ5NeJRWJRZkhMS0Uk6Ri4uO7GhJV-3Dh37Yi7kYlB4AUgNG3jkMueaXmfXx-XMJifA",
       "machine_id": "mm_123",
-      "claims": {
-        "sub": "actor_456",
-        "mid": "mm_123",
-        "exp": 1000000000,
-        "iat": 999999000
-      },
       "should_validate": false,
       "expected_error": "expired"
     },
     {
-      "description": "wrong machine ID",
-      "secret": "test-secret-for-vectors",
-      "purpose": "managed-machine",
+      "description": "wrong machine ID (token mm_123, validator mm_other)",
+      "public_key_pem": "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEO8Tv6TwuSgFUTwvefMaXUPl29NDR\ndzeZXYq/t9mI5WFEskZY8Ch9CmGH7glpxR5VBXlGIbvbEnWoumJ8FrW9PQ==\n-----END PUBLIC KEY-----",
+      "token": "eyJhbGciOiJFUzI1NiIsImtpZCI6IjEifQ.eyJtaWQiOiJtbV8xMjMiLCJzdWIiOiJhY3Rvcl80NTYiLCJpYXQiOjE3MDAwMDAwMDAsImV4cCI6OTk5OTk5OTk5OX0.Dwrp2rZneTHCm4oV5wW09maBea5mSMiHJQ0mxxPJH5BW3cdKhLw6GFPqgvtIZx8CoiyrupWBJuMaRndnuYOAxQ",
       "machine_id": "mm_other",
-      "claims": {
-        "sub": "actor_456",
-        "mid": "mm_123",
-        "exp": 9999999999,
-        "iat": 1700000000
-      },
       "should_validate": false,
       "expected_error": "machine ID mismatch"
+    },
+    {
+      "description": "token with extra claims (forward compatibility)",
+      "public_key_pem": "-----BEGIN PUBLIC KEY-----\nMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEO8Tv6TwuSgFUTwvefMaXUPl29NDR\ndzeZXYq/t9mI5WFEskZY8Ch9CmGH7glpxR5VBXlGIbvbEnWoumJ8FrW9PQ==\n-----END PUBLIC KEY-----",
+      "token": "eyJhbGciOiJFUzI1NiIsImtpZCI6IjEifQ.eyJtaWQiOiJtbV9mdWxsIiwiZXh0cmEiOiJjdXN0b20tY2xhaW0iLCJzdWIiOiJhY3Rvcl9mdWxsIiwiaWF0IjoxNzAwMDAwMDAwLCJleHAiOjk5OTk5OTk5OTl9.q7LefBFrn8ikQROeQgEpnJNCxf19z9FtrMJ8X0LUa6eultqXICn1gQrZxNkd1dRziT0a36v0ARJqrW444_m4RA",
+      "machine_id": "mm_full",
+      "should_validate": true
     }
   ],
   "hmac_vectors": [

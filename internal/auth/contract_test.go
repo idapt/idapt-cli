@@ -8,26 +8,22 @@ import (
 	"testing"
 )
 
+// CryptoVectors holds cross-language test vectors for Go/TypeScript compatibility.
+// ES256 vectors contain pre-signed JWTs + public keys for validation.
+// HMAC vectors remain for heartbeat auth (future).
 type CryptoVectors struct {
-	HKDFVectors []HKDFVector `json:"hkdf_vectors"`
-	JWTVectors  []JWTVector  `json:"jwt_vectors"`
-	HMACVectors []HMACVector `json:"hmac_vectors"`
+	ES256JWTVectors []ES256JWTVector `json:"es256_jwt_vectors"`
+	HMACVectors     []HMACVector     `json:"hmac_vectors"`
 }
 
-type HKDFVector struct {
-	Secret            string `json:"secret"`
-	Purpose           string `json:"purpose"`
-	ExpectedKeyLength int    `json:"expected_key_length"`
-}
-
-type JWTVector struct {
-	Description    string                 `json:"description"`
-	Secret         string                 `json:"secret"`
-	Purpose        string                 `json:"purpose"`
-	MachineID      string                 `json:"machine_id"`
-	Claims         map[string]interface{} `json:"claims"`
-	ShouldValidate bool                   `json:"should_validate"`
-	ExpectedError  string                 `json:"expected_error"`
+// ES256JWTVector is a pre-signed ES256 JWT with the corresponding public key PEM.
+type ES256JWTVector struct {
+	Description    string `json:"description"`
+	PublicKeyPEM   string `json:"public_key_pem"`
+	Token          string `json:"token"`
+	MachineID      string `json:"machine_id"`
+	ShouldValidate bool   `json:"should_validate"`
+	ExpectedError  string `json:"expected_error"`
 }
 
 type HMACVector struct {
@@ -40,7 +36,7 @@ func loadVectors(t *testing.T) CryptoVectors {
 	t.Helper()
 	data, err := os.ReadFile("../../testdata/crypto-vectors.json")
 	if err != nil {
-		t.Fatalf("failed to load crypto vectors: %v", err)
+		t.Skipf("crypto vectors file not found (run scripts/generate-jwt-vectors.ts first): %v", err)
 	}
 	var vectors CryptoVectors
 	if err := json.Unmarshal(data, &vectors); err != nil {
@@ -49,62 +45,27 @@ func loadVectors(t *testing.T) CryptoVectors {
 	return vectors
 }
 
-func TestContract_HKDFKeyDerivation(t *testing.T) {
+func TestContract_ES256JWTValidation(t *testing.T) {
 	vectors := loadVectors(t)
 
-	for _, v := range vectors.HKDFVectors {
-		t.Run(v.Purpose, func(t *testing.T) {
-			key, err := DeriveSigningKey(v.Secret, v.Purpose)
-			if err != nil {
-				t.Fatalf("DeriveSigningKey failed: %v", err)
-			}
-			if len(key) != v.ExpectedKeyLength {
-				t.Errorf("key length = %d, want %d", len(key), v.ExpectedKeyLength)
-			}
-		})
+	if len(vectors.ES256JWTVectors) == 0 {
+		t.Skip("no ES256 JWT vectors (run scripts/generate-jwt-vectors.ts first)")
 	}
 
-	// Same secret + purpose must produce same key deterministically
-	t.Run("deterministic", func(t *testing.T) {
-		key1, _ := DeriveSigningKey("test-secret-for-vectors", "managed-machine")
-		key2, _ := DeriveSigningKey("test-secret-for-vectors", "managed-machine")
-		if !hmac.Equal(key1, key2) {
-			t.Error("same inputs must produce identical keys")
-		}
-	})
-
-	// Different purposes must produce different keys
-	t.Run("purpose-isolation", func(t *testing.T) {
-		key1, _ := DeriveSigningKey("test-secret-for-vectors", "managed-machine")
-		key2, _ := DeriveSigningKey("test-secret-for-vectors", "verification")
-		if hmac.Equal(key1, key2) {
-			t.Error("different purposes must produce different keys")
-		}
-	})
-}
-
-func TestContract_JWTValidation(t *testing.T) {
-	vectors := loadVectors(t)
-
-	for _, v := range vectors.JWTVectors {
+	for _, v := range vectors.ES256JWTVectors {
 		t.Run(v.Description, func(t *testing.T) {
-			// Derive key
-			key, err := DeriveSigningKey(v.Secret, v.Purpose)
+			// Create validator from the vector's public key PEM
+			validator, err := NewJWTValidator(v.PublicKeyPEM, v.MachineID)
 			if err != nil {
-				t.Fatalf("DeriveSigningKey failed: %v", err)
-			}
-
-			// Create JWT from claims
-			token := createTestJWT(t, key, v.Claims)
-
-			// Create validator for the machine ID in the vector
-			validator, err := NewJWTValidator(v.Secret, v.MachineID)
-			if err != nil {
+				if !v.ShouldValidate {
+					// Expected to fail at validator creation
+					return
+				}
 				t.Fatalf("NewJWTValidator failed: %v", err)
 			}
 
-			// Validate
-			_, validateErr := validator.Validate(token)
+			// Validate the pre-signed token
+			_, validateErr := validator.Validate(v.Token)
 
 			if v.ShouldValidate {
 				if validateErr != nil {
@@ -121,6 +82,10 @@ func TestContract_JWTValidation(t *testing.T) {
 
 func TestContract_HMAC(t *testing.T) {
 	vectors := loadVectors(t)
+
+	if len(vectors.HMACVectors) == 0 {
+		t.Skip("no HMAC vectors")
+	}
 
 	for _, v := range vectors.HMACVectors {
 		t.Run(v.Message, func(t *testing.T) {
