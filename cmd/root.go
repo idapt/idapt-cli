@@ -122,7 +122,7 @@ func init() {
 	rootCmd.AddCommand(modelCmd)
 	rootCmd.AddCommand(execCmd)
 	rootCmd.AddCommand(webCmd)
-	rootCmd.AddCommand(imageCmd)
+	rootCmd.AddCommand(mediaCmd)
 	rootCmd.AddCommand(settingsCmd)
 	rootCmd.AddCommand(profileCmd)
 	rootCmd.AddCommand(subscriptionCmd)
