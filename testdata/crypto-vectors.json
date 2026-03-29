@@ -1,0 +1,65 @@
+{
+  "description": "Cross-language crypto test vectors for Go and TypeScript parity",
+  "hkdf_vectors": [
+    {
+      "secret": "test-secret-for-vectors",
+      "purpose": "managed-machine",
+      "expected_key_length": 32
+    },
+    {
+      "secret": "test-secret-for-vectors",
+      "purpose": "verification",
+      "expected_key_length": 32
+    }
+  ],
+  "jwt_vectors": [
+    {
+      "description": "valid token for machine mm_123",
+      "secret": "test-secret-for-vectors",
+      "purpose": "managed-machine",
+      "machine_id": "mm_123",
+      "claims": {
+        "sub": "actor_456",
+        "mid": "mm_123",
+        "exp": 9999999999,
+        "iat": 1700000000
+      },
+      "should_validate": true
+    },
+    {
+      "description": "expired token",
+      "secret": "test-secret-for-vectors",
+      "purpose": "managed-machine",
+      "machine_id": "mm_123",
+      "claims": {
+        "sub": "actor_456",
+        "mid": "mm_123",
+        "exp": 1000000000,
+        "iat": 999999000
+      },
+      "should_validate": false,
+      "expected_error": "expired"
+    },
+    {
+      "description": "wrong machine ID",
+      "secret": "test-secret-for-vectors",
+      "purpose": "managed-machine",
+      "machine_id": "mm_other",
+      "claims": {
+        "sub": "actor_456",
+        "mid": "mm_123",
+        "exp": 9999999999,
+        "iat": 1700000000
+      },
+      "should_validate": false,
+      "expected_error": "machine ID mismatch"
+    }
+  ],
+  "hmac_vectors": [
+    {
+      "secret": "hmac-test-secret",
+      "message": "POST:/api/firewall:1700000000",
+      "expected_length": 32
+    }
+  ]
+}
