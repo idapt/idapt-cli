@@ -55,7 +55,7 @@ var imageGenerateCmd = &cobra.Command{
 
 		// Input images: classify into 3 types
 		inputPaths, _ := cmd.Flags().GetStringSlice("input")
-		if len(inputPaths) > 0 {
+		if cmd.Flags().Changed("input") && len(inputPaths) > 0 {
 			var inputImages []string     // base64 data URLs (local files)
 			var inputImageUrls []string  // public URLs
 			var inputImagePaths []string // remote idapt project paths
