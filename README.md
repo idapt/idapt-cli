@@ -1,6 +1,21 @@
-# idapt CLI
+<p align="center">
+  <img src="https://idapt.ai/images/logo/logo.png" alt="idapt" width="120" />
+</p>
 
-The official command-line tool for [idapt](https://idapt.ai).
+<h1 align="center">idapt CLI</h1>
+
+<p align="center">
+  Your AI workspace, from the terminal.<br />
+  Manage projects, agents, files, chats, machines, and 200+ AI models.
+</p>
+
+<p align="center">
+  <a href="https://idapt.ai/cli"><strong>Landing Page</strong></a> &middot;
+  <a href="https://idapt.ai/help/cli-overview"><strong>Documentation</strong></a> &middot;
+  <a href="https://github.com/idapt/idapt-cli/releases"><strong>Releases</strong></a>
+</p>
+
+---
 
 ## Install
 
@@ -9,6 +24,37 @@ curl -fsSL https://idapt.ai/cli/install | bash
 ```
 
 Or download directly from [GitHub Releases](https://github.com/idapt/idapt-cli/releases).
+
+## Quick Start
+
+```bash
+# 1. Authenticate
+idapt auth login --api-key idapt_sk_...
+
+# 2. Explore your workspace
+idapt project list -o table
+idapt agent list --project my-project
+
+# 3. Start working
+idapt chat send my-chat --message "Summarize the latest report"
+idapt file upload ./data.csv --project my-project
+idapt machine exec prod-server "docker ps"
+```
+
+## Features
+
+- **200+ AI Models** — access every model from your terminal
+- **Agents & Chat** — create agents, send messages, export conversations
+- **Cloud Machines** — SSH, exec, tmux, file transfer, firewall management
+- **Files** — upload, download, grep, glob, semantic search
+- **Knowledge Bases** — ask, search, ingest, manage notes
+- **Tasks** — create, assign, comment, and track on boards
+- **Scripts** — run and sequence scripts across machines
+- **Code Execution** — sandboxed Python and Node.js
+- **Store** — install skills, KBs, scripts, and agents
+- **Image & Audio** — generate images and transcribe audio
+- **Web Search** — search the web and fetch pages
+- **Multi-Agent** — orchestrate agent conversations
 
 ## Usage
 
@@ -59,11 +105,13 @@ idapt serve --config /etc/idapt/config.json
 | `model` | list, search, favorite | Model browsing |
 | `exec` | code, bash | Sandboxed code execution |
 | `web` | search, fetch | Web search & fetch |
-| `image` | generate | Image generation |
+| `media` | generate, transcribe | Image generation & audio transcription |
 | `settings` | get, set | Account settings |
 | `profile` | get, edit | Profile management |
 | `api-key` | list, create, delete | API key management |
 | `share` | list, create, delete | Resource sharing |
+| `notification` | list, read | Notifications |
+| `multi-agent` | send, list, read | Multi-agent orchestration |
 | `serve` | (daemon) | Per-machine daemon |
 | `firewall` | list, add, remove | Local firewall (daemon) |
 | `version` | | Print CLI version |
@@ -143,6 +191,13 @@ IDAPT_TEST_BASE_URL=http://localhost:3001 \
   go test -tags=integration -v ./tests/integration/...
 ```
 
+## Documentation
+
+- [CLI Landing Page](https://idapt.ai/cli) — installation, features, and quick start
+- [Help Center](https://idapt.ai/help/cli-overview) — full documentation with guides
+- [Command Reference](https://idapt.ai/help/cli-commands) — all 24 command groups
+- [Automation Guide](https://idapt.ai/help/cli-automation) — scripting and CI/CD
+
 ## License
 
-MIT — see [LICENSE](LICENSE)
+MIT &copy; 2026 idapt — see [LICENSE](LICENSE)
