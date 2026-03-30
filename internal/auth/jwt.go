@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"math/big"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -34,7 +35,10 @@ type Claims struct {
 
 // JWTValidator validates machine auth JWTs using an ES256 (ECDSA P-256) public key.
 // The public key is the only material needed — zero secrets on the machine.
+// Thread-safe: the public key can be updated at runtime via SetPublicKey (e.g.,
+// after a JWKS refresh) while Validate calls are in flight.
 type JWTValidator struct {
+	mu        sync.RWMutex
 	publicKey *ecdsa.PublicKey
 	machineID string
 }
@@ -69,6 +73,29 @@ func NewJWTValidator(publicKeyPEM string, machineID string) (*JWTValidator, erro
 	}
 
 	return &JWTValidator{publicKey: ecPub, machineID: machineID}, nil
+}
+
+// NewJWTValidatorFromKey creates a validator from an already-parsed ECDSA P-256
+// public key. Used when the key is fetched via JWKS instead of PEM config.
+func NewJWTValidatorFromKey(publicKey *ecdsa.PublicKey, machineID string) (*JWTValidator, error) {
+	if publicKey == nil {
+		return nil, errors.New("public key is required")
+	}
+	if machineID == "" {
+		return nil, errors.New("machine ID is required")
+	}
+	if publicKey.Curve != elliptic.P256() {
+		return nil, fmt.Errorf("key is not on P-256 curve (got %s)", publicKey.Curve.Params().Name)
+	}
+	return &JWTValidator{publicKey: publicKey, machineID: machineID}, nil
+}
+
+// SetPublicKey replaces the validator's public key at runtime. Thread-safe.
+// Used by the JWKS refresh loop to hot-swap keys without restarting.
+func (v *JWTValidator) SetPublicKey(key *ecdsa.PublicKey) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	v.publicKey = key
 }
 
 // Validate parses and validates an ES256-signed JWT string, returning the claims if valid.
@@ -126,7 +153,12 @@ func (v *JWTValidator) Validate(tokenString string) (*Claims, error) {
 	signingInput := []byte(parts[0] + "." + parts[1])
 	hash := sha256.Sum256(signingInput)
 
-	if !ecdsa.Verify(v.publicKey, hash[:], r, s) {
+	// Read lock: the public key may be swapped by JWKS refresh concurrently.
+	v.mu.RLock()
+	pubKey := v.publicKey
+	v.mu.RUnlock()
+
+	if !ecdsa.Verify(pubKey, hash[:], r, s) {
 		return nil, errors.New("invalid signature")
 	}
 

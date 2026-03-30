@@ -124,20 +124,45 @@ func TestLoad_ValidConfig_NoMachineToken(t *testing.T) {
 	}
 }
 
-func TestLoad_MissingBothPEMAndFile(t *testing.T) {
+func TestLoad_MissingBothPEMAndFile_WithAppURL(t *testing.T) {
+	// When AppURL is set, JwksURL is auto-derived, so missing PEM is OK.
 	path := writeTestConfig(t, `{
 		"machineId": "mm-123",
 		"appUrl": "https://idapt.ai",
 		"domain": "my-machine.idapt.app"
 	}`)
 
-	_, err := Load(path)
-	if err == nil {
-		t.Fatal("expected error when both jwtPublicKeyPEM and jwtPublicKeyFile are missing")
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("unexpected error (JWKS auto-derived from AppURL): %v", err)
+	}
+	if cfg.JwksURL != "https://idapt.ai/api/managed-machines/jwks" {
+		t.Errorf("JwksURL = %q, want auto-derived from AppURL", cfg.JwksURL)
 	}
 }
 
-func TestLoad_EmptyPEM(t *testing.T) {
+func TestLoad_MissingAllKeyMethods(t *testing.T) {
+	// When AppURL is missing, JwksURL cannot be auto-derived — all key methods fail.
+	// We need appUrl to be present for the config to be valid at all, so instead
+	// test with explicit empty jwksUrl and no PEM. Since AppURL auto-derives jwksUrl,
+	// we must clear it via env override after loading.
+	// Actually: the only scenario where all 3 are missing requires no AppURL, which
+	// itself is a required field. So the error "appUrl is required" fires first.
+	// That's correct behavior — you can't have a config without AppURL.
+	// Instead, test the scenario where jwksUrl is explicitly empty and no PEM.
+	path := writeTestConfig(t, `{
+		"machineId": "mm-123",
+		"domain": "my-machine.idapt.app"
+	}`)
+
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("expected error for missing appUrl (and therefore no way to derive jwksUrl)")
+	}
+}
+
+func TestLoad_EmptyPEM_WithJwksAutoDerive(t *testing.T) {
+	// Empty PEM is now acceptable because JwksURL is auto-derived from AppURL.
 	path := writeTestConfig(t, `{
 		"machineId": "mm-123",
 		"appUrl": "https://idapt.ai",
@@ -145,9 +170,12 @@ func TestLoad_EmptyPEM(t *testing.T) {
 		"jwtPublicKeyPEM": ""
 	}`)
 
-	_, err := Load(path)
-	if err == nil {
-		t.Fatal("expected error for empty jwtPublicKeyPEM")
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("unexpected error (JWKS auto-derived): %v", err)
+	}
+	if cfg.JwksURL != "https://idapt.ai/api/managed-machines/jwks" {
+		t.Errorf("JwksURL = %q, want auto-derived from AppURL", cfg.JwksURL)
 	}
 }
 
@@ -345,6 +373,59 @@ func TestLoad_EmptyFile(t *testing.T) {
 	_, err := Load(path)
 	if err == nil {
 		t.Fatal("expected error for empty config (missing required fields)")
+	}
+}
+
+func TestLoad_ExplicitJwksURL(t *testing.T) {
+	path := writeTestConfig(t, `{
+		"machineId": "mm-123",
+		"appUrl": "https://idapt.ai",
+		"domain": "my-machine.idapt.app",
+		"jwksUrl": "https://custom.example.com/.well-known/jwks.json"
+	}`)
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.JwksURL != "https://custom.example.com/.well-known/jwks.json" {
+		t.Errorf("JwksURL = %q, want explicit value", cfg.JwksURL)
+	}
+}
+
+func TestLoad_JwksURL_EnvOverride(t *testing.T) {
+	pubPEM := generateTestPublicKeyPEM(t)
+	path := writeTestConfig(t, `{
+		"machineId": "mm-123",
+		"appUrl": "https://idapt.ai",
+		"domain": "my-machine.idapt.app",
+		"jwtPublicKeyPEM": `+jsonEscape(pubPEM)+`
+	}`)
+
+	t.Setenv("IDAPT_JWKS_URL", "https://env-override.example.com/jwks")
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.JwksURL != "https://env-override.example.com/jwks" {
+		t.Errorf("JwksURL = %q, want env override value", cfg.JwksURL)
+	}
+}
+
+func TestLoad_JwksURL_AutoDeriveTrimsTrailingSlash(t *testing.T) {
+	path := writeTestConfig(t, `{
+		"machineId": "mm-123",
+		"appUrl": "https://idapt.ai/",
+		"domain": "my-machine.idapt.app"
+	}`)
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.JwksURL != "https://idapt.ai/api/managed-machines/jwks" {
+		t.Errorf("JwksURL = %q, want trailing slash trimmed", cfg.JwksURL)
 	}
 }
 

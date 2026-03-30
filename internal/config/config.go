@@ -26,6 +26,11 @@ type Config struct {
 	// If set, the file is read and its contents populate JWTPublicKeyPEM.
 	JWTPublicKeyFile string `json:"jwtPublicKeyFile"`
 
+	// JwksURL is the URL of the JWKS endpoint to fetch the ES256 public key from.
+	// If empty and AppURL is set, auto-derived as AppURL + "/api/managed-machines/jwks".
+	// When set, JWTPublicKeyPEM becomes optional (key is fetched dynamically).
+	JwksURL string `json:"jwksUrl"`
+
 	// MachineToken is an HMAC key for machine-level API auth (heartbeat, firewall).
 	// Optional — heartbeat auth is deferred to a follow-up.
 	MachineToken string `json:"machineToken"`
@@ -68,6 +73,9 @@ func Load(path string) (*Config, error) {
 	if v := os.Getenv("IDAPT_JWT_PUBLIC_KEY_FILE"); v != "" {
 		cfg.JWTPublicKeyFile = v
 	}
+	if v := os.Getenv("IDAPT_JWKS_URL"); v != "" {
+		cfg.JwksURL = v
+	}
 	if v := os.Getenv("IDAPT_MACHINE_TOKEN"); v != "" {
 		cfg.MachineToken = v
 	}
@@ -82,6 +90,11 @@ func Load(path string) (*Config, error) {
 			return nil, fmt.Errorf("read JWT public key file %s: %w", cfg.JWTPublicKeyFile, err)
 		}
 		cfg.JWTPublicKeyPEM = string(pemData)
+	}
+
+	// Auto-derive JwksURL from AppURL if not explicitly set.
+	if cfg.JwksURL == "" && cfg.AppURL != "" {
+		cfg.JwksURL = strings.TrimRight(cfg.AppURL, "/") + "/api/managed-machines/jwks"
 	}
 
 	// Defaults
@@ -105,8 +118,8 @@ func Load(path string) (*Config, error) {
 	if strings.Contains(cfg.Domain, "*") {
 		return nil, fmt.Errorf("domain must be a specific subdomain, not a wildcard: %s", cfg.Domain)
 	}
-	if cfg.JWTPublicKeyPEM == "" {
-		return nil, fmt.Errorf("jwtPublicKeyPEM or jwtPublicKeyFile is required")
+	if cfg.JWTPublicKeyPEM == "" && cfg.JwksURL == "" {
+		return nil, fmt.Errorf("jwtPublicKeyPEM, jwtPublicKeyFile, or jwksUrl is required")
 	}
 	// MachineToken is intentionally optional — heartbeat auth is deferred
 

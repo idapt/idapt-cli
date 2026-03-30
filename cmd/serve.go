@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"fmt"
 	"log"
 	"net/http"
@@ -43,10 +44,41 @@ func runServe(cmd *cobra.Command, args []string) error {
 
 	log.Printf("idapt %s starting for machine %s (domain: %s)", Version, cfg.MachineID, cfg.Domain)
 
-	// Initialize components
-	jwtValidator, err := auth.NewJWTValidator(cfg.JWTPublicKeyPEM, cfg.MachineID)
-	if err != nil {
-		return fmt.Errorf("failed to init JWT validator: %w", err)
+	// Initialize JWT validator — prefer JWKS (dynamic key fetch) over static PEM.
+	var jwtValidator *auth.JWTValidator
+	if cfg.JwksURL != "" {
+		log.Printf("Fetching JWT public key from JWKS endpoint: %s", cfg.JwksURL)
+		jwksFetcher := auth.NewJWKSFetcher(cfg.JwksURL)
+
+		fetchCtx, fetchCancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		if err := jwksFetcher.FetchWithRetry(fetchCtx); err != nil {
+			fetchCancel()
+			return fmt.Errorf("failed to fetch JWKS: %w", err)
+		}
+		fetchCancel()
+
+		jwtValidator, err = auth.NewJWTValidatorFromKey(jwksFetcher.GetPublicKey(), cfg.MachineID)
+		if err != nil {
+			return fmt.Errorf("failed to init JWT validator from JWKS key: %w", err)
+		}
+
+		// Background refresh — update the validator's key when JWKS rotates.
+		jwksFetcher.SetOnRefresh(func(key *ecdsa.PublicKey) {
+			jwtValidator.SetPublicKey(key)
+		})
+
+		refreshCtx, refreshCancel := context.WithCancel(context.Background())
+		defer refreshCancel()
+		jwksFetcher.StartRefreshLoop(refreshCtx)
+
+		log.Printf("JWT validator initialized from JWKS (key will refresh hourly)")
+	} else {
+		// Fallback: static PEM key from config file.
+		jwtValidator, err = auth.NewJWTValidator(cfg.JWTPublicKeyPEM, cfg.MachineID)
+		if err != nil {
+			return fmt.Errorf("failed to init JWT validator: %w", err)
+		}
+		log.Printf("JWT validator initialized from static PEM key")
 	}
 
 	apiKeyValidator := auth.NewAPIKeyValidator()
