@@ -106,50 +106,6 @@ func TestWebFetch(t *testing.T) {
 	}
 }
 
-// --- image ---
-
-func TestImageGenerate(t *testing.T) {
-	h := mockHandler(map[string]func(w http.ResponseWriter, r *http.Request){
-		"POST /api/image/generate": func(w http.ResponseWriter, r *http.Request) {
-			var body map[string]interface{}
-			json.NewDecoder(r.Body).Decode(&body)
-			if body["prompt"] != "a cat" {
-				t.Errorf("expected prompt='a cat', got %v", body["prompt"])
-			}
-			jsonResponse(w, 200, map[string]interface{}{
-				"url": "https://images.example.com/cat.png", "model": "dall-e-3",
-			})
-		},
-	})
-	stdout, _, err := runCmd(t, h, "image", "generate", "a cat")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !strings.Contains(stdout, "https://images.example.com/cat.png") {
-		t.Errorf("expected image URL, got: %s", stdout)
-	}
-}
-
-func TestImageGenerateWithModel(t *testing.T) {
-	h := mockHandler(map[string]func(w http.ResponseWriter, r *http.Request){
-		"POST /api/image/generate": func(w http.ResponseWriter, r *http.Request) {
-			var body map[string]interface{}
-			json.NewDecoder(r.Body).Decode(&body)
-			if body["model"] != "dall-e-3" {
-				t.Errorf("expected model=dall-e-3, got %v", body["model"])
-			}
-			if body["size"] != "1024x1024" {
-				t.Errorf("expected size=1024x1024, got %v", body["size"])
-			}
-			jsonResponse(w, 200, map[string]interface{}{"url": "https://img.example.com/x.png"})
-		},
-	})
-	_, _, err := runCmd(t, h, "image", "generate", "a dog", "--model", "dall-e-3", "--size", "1024x1024")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
 // --- profile ---
 
 func TestProfileGet(t *testing.T) {
