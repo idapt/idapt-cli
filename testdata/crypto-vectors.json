@@ -37,6 +37,11 @@
       "secret": "hmac-test-secret",
       "message": "POST:/api/firewall:1700000000",
       "expected_length": 32
+    },
+    {
+      "secret": "hmac-test-secret",
+      "message": "POST:/api/managed-machines/mm_123/heartbeat:1700000000",
+      "expected_length": 32
     }
   ]
 }

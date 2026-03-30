@@ -23,9 +23,14 @@ import (
 // Primary: Let's Encrypt. Fallback: self-signed if ACME fails.
 // Returns TLS config, HTTP handler for ACME challenges, and error.
 func SetupCertMagic(domain, email string) (*tls.Config, http.Handler, error) {
-	// Skip certmagic in development (localhost domains can't get real certs)
+	// Skip certmagic in development (localhost domains can't get real certs).
+	// Return a self-signed cert instead so the daemon still serves HTTPS.
 	if domain == "" || strings.Contains(domain, "localhost") {
-		return nil, nil, fmt.Errorf("certmagic skipped for localhost domain")
+		selfSigned, err := SelfSignedConfig(domain)
+		if err != nil {
+			return nil, nil, fmt.Errorf("self-signed for localhost: %w", err)
+		}
+		return selfSigned, nil, nil
 	}
 
 	// Configure certmagic
@@ -48,10 +53,12 @@ func SetupCertMagic(domain, email string) (*tls.Config, http.Handler, error) {
 	tlsConfig := cfg.TLSConfig()
 	tlsConfig.NextProtos = append([]string{"h2", "http/1.1"}, tlsConfig.NextProtos...)
 
-	// Manage the domain (async — starts cert acquisition in background)
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	if err := cfg.ManageAsync(ctx, []string{domain}); err != nil {
+	// Manage the domain (async — starts cert acquisition in background).
+	// Use context.Background() (no timeout) so CertMagic can retry with its
+	// built-in exponential backoff. The old 30s timeout was prematurely killing
+	// the ACME flow when DNS wasn't propagated yet (cloud-init starts the daemon
+	// before the provisioning workflow sets the DNS record).
+	if err := cfg.ManageAsync(context.Background(), []string{domain}); err != nil {
 		return nil, nil, fmt.Errorf("certmagic manage %s: %w", domain, err)
 	}
 

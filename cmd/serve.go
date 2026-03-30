@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"crypto/ecdsa"
+	"crypto/tls"
 	"fmt"
 	"log"
 	"net/http"
@@ -115,14 +116,47 @@ func runServe(cmd *cobra.Command, args []string) error {
 	// All other requests go through auth + proxy
 	mux.HandleFunc("/", authMiddleware.Wrap(reverseProxy.ServeHTTP))
 
-	// TLS configuration
-	tlsConfig, acmeHandler, err := idaptTls.SetupCertMagic(cfg.Domain, cfg.ACMEEmail)
+	// TLS configuration: CertMagic (ACME) with self-signed fallback.
+	// Always generate a self-signed cert so HTTPS works immediately at startup,
+	// even before CertMagic obtains a real cert (DNS may not be propagated yet).
+	selfSignedConfig, err := idaptTls.SelfSignedConfig(cfg.Domain)
 	if err != nil {
-		log.Printf("WARN: ACME setup failed, using self-signed: %v", err)
-		tlsConfig, err = idaptTls.SelfSignedConfig(cfg.Domain)
-		if err != nil {
-			return fmt.Errorf("failed to create self-signed cert: %w", err)
+		return fmt.Errorf("failed to create self-signed cert: %w", err)
+	}
+	selfSignedGetCert := selfSignedConfig.GetCertificate
+	if selfSignedGetCert == nil && len(selfSignedConfig.Certificates) > 0 {
+		// SelfSignedConfig uses Certificates field, wrap it as GetCertificate
+		selfCert := selfSignedConfig.Certificates[0]
+		selfSignedGetCert = func(*tls.ClientHelloInfo) (*tls.Certificate, error) {
+			return &selfCert, nil
 		}
+	}
+
+	var tlsConfig *tls.Config
+	var acmeHandler http.Handler
+	acmeTlsConfig, acmeH, acmeErr := idaptTls.SetupCertMagic(cfg.Domain, cfg.ACMEEmail)
+	if acmeErr != nil {
+		log.Printf("WARN: ACME setup failed, using self-signed only: %v", acmeErr)
+		tlsConfig = selfSignedConfig
+	} else {
+		acmeHandler = acmeH
+		// Compose: try CertMagic first, fall back to self-signed if no cert available
+		acmeGetCert := acmeTlsConfig.GetCertificate
+		tlsConfig = acmeTlsConfig
+		tlsConfig.GetCertificate = func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
+			if acmeGetCert != nil {
+				cert, err := acmeGetCert(hello)
+				if cert != nil && err == nil {
+					return cert, nil
+				}
+			}
+			// CertMagic has no cert yet — use self-signed fallback
+			if selfSignedGetCert != nil {
+				return selfSignedGetCert(hello)
+			}
+			return nil, fmt.Errorf("no certificate available")
+		}
+		log.Printf("TLS: CertMagic + self-signed fallback configured for %s", cfg.Domain)
 	}
 
 	// HTTPS server (port 443)
