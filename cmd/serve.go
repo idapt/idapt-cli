@@ -4,10 +4,12 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
 	"syscall"
 	"time"
@@ -25,6 +27,14 @@ import (
 )
 
 var configPath string
+var testSigCh chan os.Signal // set in test mode for /__test/signal/restart
+
+func getEnvOrDefault(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
 
 var serveCmd = &cobra.Command{
 	Use:   "serve",
@@ -83,6 +93,9 @@ func runServe(cmd *cobra.Command, args []string) error {
 	}
 
 	apiKeyValidator := auth.NewAPIKeyValidator()
+	for _, h := range cfg.APIKeyHashes {
+		apiKeyValidator.AddKeyHash(h)
+	}
 	fwManager := firewall.NewManager()
 	reverseProxy := proxy.New(cfg.DefaultBackendPort)
 	pages := errorpages.New(cfg.Domain, cfg.AppURL)
@@ -112,6 +125,90 @@ func runServe(cmd *cobra.Command, args []string) error {
 		// certmagic handles this internally via its HTTP handler
 		http.NotFound(w, r)
 	})
+
+	// Test-mode management endpoints (only when IDAPT_TEST_MODE=1)
+	if os.Getenv("IDAPT_TEST_MODE") == "1" {
+		testSigCh = make(chan os.Signal, 1)
+		mux.HandleFunc("POST /__test/signal/restart", func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"ok":true}`))
+			go func() {
+				time.Sleep(100 * time.Millisecond)
+				testSigCh <- syscall.SIGUSR1
+			}()
+		})
+		mux.HandleFunc("POST /__test/validate-jwt", func(w http.ResponseWriter, r *http.Request) {
+			var body struct {
+				Token string `json:"token"`
+			}
+			json.NewDecoder(r.Body).Decode(&body)
+			claims, err := jwtValidator.Validate(body.Token)
+			w.Header().Set("Content-Type", "application/json")
+			if err != nil {
+				json.NewEncoder(w).Encode(map[string]interface{}{
+					"valid": false, "error": err.Error(),
+				})
+			} else {
+				json.NewEncoder(w).Encode(map[string]interface{}{
+					"valid": true, "claims": claims,
+				})
+			}
+		})
+		mux.HandleFunc("POST /__test/set-machine-id", func(w http.ResponseWriter, r *http.Request) {
+			var body struct {
+				MachineID string `json:"machineId"`
+			}
+			json.NewDecoder(r.Body).Decode(&body)
+			if body.MachineID != "" {
+				jwtValidator.SetMachineID(body.MachineID)
+				log.Printf("TEST MODE: machine ID updated to %s", body.MachineID)
+			}
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"ok":true}`))
+		})
+		mux.HandleFunc("POST /__test/apikey", func(w http.ResponseWriter, r *http.Request) {
+			var body struct {
+				Hash string `json:"hash"`
+			}
+			json.NewDecoder(r.Body).Decode(&body)
+			apiKeyValidator.AddKeyHash(body.Hash)
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"ok":true}`))
+		})
+		mux.HandleFunc("POST /__test/exec", func(w http.ResponseWriter, r *http.Request) {
+			var body struct {
+				Command string `json:"command"`
+			}
+			json.NewDecoder(r.Body).Decode(&body)
+			out, err := exec.Command("sh", "-c", body.Command).CombinedOutput()
+			w.Header().Set("Content-Type", "application/json")
+			errStr := ""
+			if err != nil {
+				errStr = err.Error()
+			}
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"output": string(out), "error": errStr,
+			})
+		})
+		mux.HandleFunc("POST /__test/block-app", func(w http.ResponseWriter, r *http.Request) {
+			var body struct {
+				Block bool `json:"block"`
+			}
+			json.NewDecoder(r.Body).Decode(&body)
+			// Uses iptables OUTPUT chain to block/unblock traffic to app server
+			appHost := cfg.AppURL
+			var cmd *exec.Cmd
+			if body.Block {
+				cmd = exec.Command("sh", "-c", fmt.Sprintf("iptables -A OUTPUT -d %s -j DROP 2>/dev/null || true", appHost))
+			} else {
+				cmd = exec.Command("sh", "-c", fmt.Sprintf("iptables -D OUTPUT -d %s -j DROP 2>/dev/null || true", appHost))
+			}
+			cmd.Run()
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"ok":true}`))
+		})
+		log.Printf("TEST MODE: /__test/* endpoints enabled")
+	}
 
 	// All other requests go through auth + proxy
 	mux.HandleFunc("/", authMiddleware.Wrap(reverseProxy.ServeHTTP))
@@ -159,9 +256,10 @@ func runServe(cmd *cobra.Command, args []string) error {
 		log.Printf("TLS: CertMagic + self-signed fallback configured for %s", cfg.Domain)
 	}
 
-	// HTTPS server (port 443)
+	// HTTPS server (port 443, or IDAPT_HTTPS_PORT override for non-root containers)
+	httpsPort := getEnvOrDefault("IDAPT_HTTPS_PORT", "443")
 	httpsServer := &http.Server{
-		Addr:      ":443",
+		Addr:      ":" + httpsPort,
 		Handler:   mux,
 		TLSConfig: tlsConfig,
 	}
@@ -178,8 +276,10 @@ func runServe(cmd *cobra.Command, args []string) error {
 		http.Redirect(w, r, target, http.StatusMovedPermanently)
 	})
 
+	// HTTP server (port 80, or IDAPT_HTTP_PORT override for non-root containers)
+	httpPort := getEnvOrDefault("IDAPT_HTTP_PORT", "80")
 	httpServer := &http.Server{
-		Addr:    ":80",
+		Addr:    ":" + httpPort,
 		Handler: httpHandler,
 	}
 
@@ -220,14 +320,14 @@ func runServe(cmd *cobra.Command, args []string) error {
 	lm.Reconcile(proxyCfg.TCPPorts())
 
 	go func() {
-		log.Printf("HTTPS server listening on :443")
+		log.Printf("HTTPS server listening on :%s", httpsPort)
 		if err := httpsServer.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
 			errCh <- fmt.Errorf("HTTPS server: %w", err)
 		}
 	}()
 
 	go func() {
-		log.Printf("HTTP server listening on :80")
+		log.Printf("HTTP server listening on :%s", httpPort)
 		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			errCh <- fmt.Errorf("HTTP server: %w", err)
 		}
@@ -236,6 +336,14 @@ func runServe(cmd *cobra.Command, args []string) error {
 	// Graceful shutdown / seamless restart
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT, syscall.SIGUSR1)
+	// In test mode, also listen on the test signal channel
+	if testSigCh != nil {
+		go func() {
+			for sig := range testSigCh {
+				sigCh <- sig
+			}
+		}()
+	}
 
 	select {
 	case sig := <-sigCh:

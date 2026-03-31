@@ -43,6 +43,10 @@ type Config struct {
 
 	// CLIBinaryURL is the URL to download CLI updates from.
 	CLIBinaryURL string `json:"cliBinaryUrl"`
+
+	// APIKeyHashes is a list of pre-registered API key SHA-256 hashes (hex-encoded).
+	// Loaded at startup into the APIKeyValidator. Used by cloud-init provisioning.
+	APIKeyHashes []string `json:"apiKeyHashes,omitempty"`
 }
 
 // Load reads the config from a JSON file, with env var overrides.

@@ -105,6 +105,16 @@ func TestMain(m *testing.M) {
 					sessionCookie = "better-auth.session_token=" + user.SessionToken
 					setupDone = true
 					fmt.Fprintf(os.Stderr, "INFO: Created test user %s\n", user.Email)
+
+					// Grant pro subscription so API key creation works
+					grantBody, _ := json.Marshal(map[string]string{"email": email, "tier": "pro"})
+					grantReq, _ := http.NewRequestWithContext(testCtx, "POST", baseURL+"/api/admin/test/grant-subscription", bytes.NewReader(grantBody))
+					grantReq.Header.Set("Content-Type", "application/json")
+					grantReq.Header.Set("x-test-secret", testSecret)
+					grantReq.Header.Set("Origin", baseURL)
+					if grantResp, err := http.DefaultClient.Do(grantReq); err == nil {
+						grantResp.Body.Close()
+					}
 				}
 			} else {
 				io.ReadAll(resp.Body) // drain

@@ -90,6 +90,14 @@ func NewJWTValidatorFromKey(publicKey *ecdsa.PublicKey, machineID string) (*JWTV
 	return &JWTValidator{publicKey: publicKey, machineID: machineID}, nil
 }
 
+// SetMachineID replaces the validator's machine ID at runtime. Thread-safe.
+// Used by test mode to update the machine ID after the test creates a machine record.
+func (v *JWTValidator) SetMachineID(machineID string) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	v.machineID = machineID
+}
+
 // SetPublicKey replaces the validator's public key at runtime. Thread-safe.
 // Used by the JWKS refresh loop to hot-swap keys without restarting.
 func (v *JWTValidator) SetPublicKey(key *ecdsa.PublicKey) {
