@@ -95,25 +95,25 @@ func TestNoArgs(t *testing.T) {
 
 func TestGlobalFlag_Confirm(t *testing.T) {
 	t.Run("confirm_skips_prompt", func(t *testing.T) {
-		kbID := "11111111-1111-1111-1111-111111111111"
+		agentID := "11111111-1111-1111-1111-111111111111"
 		h := mockHandler(map[string]func(w http.ResponseWriter, r *http.Request){
 			"GET /api/projects": func(w http.ResponseWriter, r *http.Request) {
 				jsonResponse(w, 200, map[string]interface{}{
 					"projects": []map[string]interface{}{{"id": "proj-1", "slug": "myproj"}},
 				})
 			},
-			"DELETE /api/kb/" + kbID: func(w http.ResponseWriter, r *http.Request) {
+			"DELETE /api/agents/" + agentID: func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(204)
 			},
 		})
-		_, _, err := runCmd(t, h, "kb", "delete", kbID, "--project", "myproj", "--confirm")
+		_, _, err := runCmd(t, h, "agent", "delete", agentID, "--project", "myproj", "--confirm")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 	})
 
 	t.Run("no_confirm_aborts_delete", func(t *testing.T) {
-		kbID := "11111111-1111-1111-1111-111111111111"
+		agentID := "11111111-1111-1111-1111-111111111111"
 		h := mockHandler(map[string]func(w http.ResponseWriter, r *http.Request){
 			"GET /api/projects": func(w http.ResponseWriter, r *http.Request) {
 				jsonResponse(w, 200, map[string]interface{}{
@@ -121,7 +121,7 @@ func TestGlobalFlag_Confirm(t *testing.T) {
 				})
 			},
 		})
-		_, _, err := runCmd(t, h, "kb", "delete", kbID, "--project", "myproj")
+		_, _, err := runCmd(t, h, "agent", "delete", agentID, "--project", "myproj")
 		if err == nil {
 			t.Fatal("expected abort error without --confirm")
 		}

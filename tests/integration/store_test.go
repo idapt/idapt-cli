@@ -38,21 +38,6 @@ func TestIntegration_Store_SearchAgents(t *testing.T) {
 	t.Logf("agent store returned %d items", len(items))
 }
 
-func TestIntegration_Store_SearchKBs(t *testing.T) {
-	skipIfNoServer(t)
-
-	// Search KB store with empty query -- should return without error
-	status, result := rawGet(t, "/api/kb-store")
-	if status != 200 {
-		t.Fatalf("GET /api/kb-store returned %d, want 200; body: %v", status, result)
-	}
-	items := getSlice(result, "items")
-	if items == nil {
-		items = getSlice(result, "data")
-	}
-	t.Logf("KB store returned %d items", len(items))
-}
-
 func TestIntegration_Store_SearchScripts(t *testing.T) {
 	skipIfNoServer(t)
 

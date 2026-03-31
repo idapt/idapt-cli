@@ -120,8 +120,6 @@ func resourceAPIPath(resourceType string) (path, nameField string) {
 	switch resourceType {
 	case "agent":
 		return "/api/agents", "name"
-	case "kb", "knowledge-base":
-		return "/api/kb", "name"
 	case "machine":
 		return "/api/machines", "name"
 	case "script":
@@ -139,7 +137,7 @@ func resourceAPIPath(resourceType string) (path, nameField string) {
 
 func extractItems(resp map[string]interface{}, resourceType string) []map[string]interface{} {
 	// Try common response keys
-	for _, key := range []string{resourceType + "s", "agents", "knowledgeBases", "machines", "scripts", "secrets", "skills", "chats", "data"} {
+	for _, key := range []string{resourceType + "s", "agents", "machines", "scripts", "secrets", "skills", "chats", "data"} {
 		if items, ok := resp[key]; ok {
 			if arr, ok := items.([]interface{}); ok {
 				result := make([]map[string]interface{}, 0, len(arr))

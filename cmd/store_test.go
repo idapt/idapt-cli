@@ -76,42 +76,6 @@ func TestStoreSkillInstall(t *testing.T) {
 	}
 }
 
-func TestStoreKBSearch(t *testing.T) {
-	h := mockHandler(map[string]func(w http.ResponseWriter, r *http.Request){
-		"GET /api/kb-store": func(w http.ResponseWriter, r *http.Request) {
-			jsonResponse(w, 200, map[string]interface{}{
-				"items": []map[string]interface{}{
-					{"id": "kb-s1", "name": "API Docs KB", "installCount": 100},
-				},
-			})
-		},
-	})
-	_, _, err := runCmd(t, h, "store", "kb", "search", "api")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func TestStoreKBInstall(t *testing.T) {
-	h := mockHandler(map[string]func(w http.ResponseWriter, r *http.Request){
-		"GET /api/projects": func(w http.ResponseWriter, r *http.Request) {
-			jsonResponse(w, 200, map[string]interface{}{
-				"projects": []map[string]interface{}{{"id": "proj-1", "slug": "myproj"}},
-			})
-		},
-		"POST /api/kb-store/kb-s1/install": func(w http.ResponseWriter, r *http.Request) {
-			jsonResponse(w, 200, map[string]interface{}{"id": "installed-kb"})
-		},
-	})
-	stdout, _, err := runCmd(t, h, "store", "kb", "install", "kb-s1", "--project", "myproj")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !strings.Contains(stdout, "installed") {
-		t.Errorf("expected 'installed' message, got: %s", stdout)
-	}
-}
-
 func TestStoreAgentSearch(t *testing.T) {
 	h := mockHandler(map[string]func(w http.ResponseWriter, r *http.Request){
 		"GET /api/agent-store": func(w http.ResponseWriter, r *http.Request) {

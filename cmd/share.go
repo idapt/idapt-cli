@@ -44,7 +44,7 @@ var shareListCmd = &cobra.Command{
 var shareCreateCmd = &cobra.Command{
 	Use:   "create <resource-type> <resource-id>",
 	Short: "Share a resource",
-	Long:  "Share a resource (kb, note, task-board, task-item) with another user.",
+	Long:  "Share a resource (task-board, task-item) with another user.",
 	Args:  cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		f := cmdutil.FactoryFromCmd(cmd)
@@ -67,16 +67,12 @@ var shareCreateCmd = &cobra.Command{
 		// Route to the appropriate shares endpoint based on resource type
 		var path string
 		switch args[0] {
-		case "kb":
-			path = "/api/kb/" + args[1] + "/shares"
-		case "note":
-			path = "/api/kb/notes/" + args[1] + "/shares"
 		case "task-board":
 			path = "/api/tasks/boards/" + args[1] + "/shares"
 		case "task-item":
 			path = "/api/tasks/items/" + args[1] + "/shares"
 		default:
-			return fmt.Errorf("unsupported resource type: %s (supported: kb, note, task-board, task-item)", args[0])
+			return fmt.Errorf("unsupported resource type: %s (supported: task-board, task-item)", args[0])
 		}
 
 		var resp map[string]interface{}
@@ -102,10 +98,6 @@ var shareDeleteCmd = &cobra.Command{
 
 		var path string
 		switch args[0] {
-		case "kb":
-			path = "/api/kb/" + args[1] + "/shares/" + args[2]
-		case "note":
-			path = "/api/kb/notes/" + args[1] + "/shares/" + args[2]
 		case "task-board":
 			path = "/api/tasks/boards/" + args[1] + "/shares/" + args[2]
 		case "task-item":
