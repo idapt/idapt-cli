@@ -10,6 +10,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -47,7 +48,7 @@ func classifyInput(value string) inputType {
 
 var mediaCmd = &cobra.Command{
 	Use:   "media",
-	Short: "Media operations (image generation, audio transcription)",
+	Short: "Media operations (image generation, text-to-speech, audio transcription)",
 }
 
 // ============ GENERATE ============
@@ -296,6 +297,194 @@ var mediaTranscribeCmd = &cobra.Command{
 	},
 }
 
+// ============ SPEAK ============
+
+var mediaSpeakCmd = &cobra.Command{
+	Use:   "speak <text>",
+	Short: "Generate speech from text",
+	Long:  "Generate speech from text. Text can be provided directly, from stdin with '-', or from a file with '@path'.",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		f := cmdutil.FactoryFromCmd(cmd)
+		client, err := f.APIClient()
+		if err != nil {
+			return err
+		}
+
+		// Resolve text input: direct arg, stdin ("-"), or file ("@path")
+		text := args[0]
+		if text == "-" {
+			data, readErr := io.ReadAll(f.In)
+			if readErr != nil {
+				return fmt.Errorf("reading stdin: %w", readErr)
+			}
+			text = strings.TrimSpace(string(data))
+		} else if strings.HasPrefix(text, "@") {
+			filePath := strings.TrimPrefix(text, "@")
+			data, readErr := os.ReadFile(filePath)
+			if readErr != nil {
+				return fmt.Errorf("reading file %q: %w", filePath, readErr)
+			}
+			text = strings.TrimSpace(string(data))
+		}
+
+		if text == "" {
+			return fmt.Errorf("text is empty")
+		}
+
+		// Project (required)
+		projectID, _ := cmd.Flags().GetString("project")
+		if projectID == "" {
+			projectID = f.Config.DefaultProject
+		}
+		if projectID == "" {
+			return fmt.Errorf("--project flag or default project is required")
+		}
+
+		body := map[string]interface{}{
+			"text":      text,
+			"projectId": projectID,
+		}
+
+		if cmd.Flags().Changed("voice") {
+			v, _ := cmd.Flags().GetString("voice")
+			body["voiceId"] = v
+		}
+		if cmd.Flags().Changed("model") {
+			v, _ := cmd.Flags().GetString("model")
+			body["modelId"] = v
+		}
+		if cmd.Flags().Changed("speed") {
+			v, _ := cmd.Flags().GetFloat64("speed")
+			body["speed"] = v
+		}
+		if cmd.Flags().Changed("pitch") {
+			v, _ := cmd.Flags().GetInt("pitch")
+			body["pitch"] = v
+		}
+		if cmd.Flags().Changed("emotion") {
+			v, _ := cmd.Flags().GetString("emotion")
+			body["emotion"] = v
+		}
+
+		var resp map[string]interface{}
+		if err := client.Post(cmd.Context(), "/api/audio/generate", body, &resp); err != nil {
+			return err
+		}
+
+		audioURL, _ := resp["url"].(string)
+
+		// If --output is set and we have a URL, download the audio to a local file
+		outputPath, _ := cmd.Flags().GetString("output")
+		if outputPath != "" && audioURL != "" {
+			dlResp, dlErr := http.Get(audioURL)
+			if dlErr != nil {
+				return fmt.Errorf("downloading audio: %w", dlErr)
+			}
+			defer dlResp.Body.Close()
+			if dlResp.StatusCode != http.StatusOK {
+				return fmt.Errorf("download returned HTTP %d", dlResp.StatusCode)
+			}
+
+			out, createErr := os.Create(outputPath)
+			if createErr != nil {
+				return fmt.Errorf("creating output file: %w", createErr)
+			}
+			defer out.Close()
+
+			n, copyErr := io.Copy(out, dlResp.Body)
+			if copyErr != nil {
+				return fmt.Errorf("writing audio file: %w", copyErr)
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "Audio saved to %s (%d bytes).\n", outputPath, n)
+			return nil
+		}
+
+		if audioURL != "" {
+			fmt.Fprintln(cmd.OutOrStdout(), audioURL)
+			return nil
+		}
+
+		formatter := f.Formatter()
+		return formatter.WriteItem(resp, []output.Column{
+			{Header: "URL", Field: "url"},
+			{Header: "MODEL", Field: "modelId"},
+			{Header: "COST", Field: "costUsd"},
+		})
+	},
+}
+
+// ============ LIST-VOICES ============
+
+var mediaListVoicesCmd = &cobra.Command{
+	Use:   "list-voices",
+	Short: "List available text-to-speech voices",
+	Args:  cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		f := cmdutil.FactoryFromCmd(cmd)
+		client, err := f.APIClient()
+		if err != nil {
+			return err
+		}
+
+		query := url.Values{}
+		if cmd.Flags().Changed("language") {
+			v, _ := cmd.Flags().GetString("language")
+			query.Set("language", v)
+		}
+		if cmd.Flags().Changed("gender") {
+			v, _ := cmd.Flags().GetString("gender")
+			query.Set("gender", v)
+		}
+
+		var resp struct {
+			Voices []map[string]interface{} `json:"voices"`
+		}
+		if err := client.Get(cmd.Context(), "/api/audio/voices", query, &resp); err != nil {
+			return err
+		}
+
+		formatter := f.Formatter()
+		return formatter.WriteList(resp.Voices, []output.Column{
+			{Header: "ID", Field: "id"},
+			{Header: "NAME", Field: "name"},
+			{Header: "GENDER", Field: "gender"},
+			{Header: "LANGUAGE", Field: "language"},
+			{Header: "CATEGORY", Field: "category"},
+		})
+	},
+}
+
+// ============ LIST-TTS-MODELS ============
+
+var mediaListTTSModelsCmd = &cobra.Command{
+	Use:   "list-tts-models",
+	Short: "List available text-to-speech models",
+	Args:  cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		f := cmdutil.FactoryFromCmd(cmd)
+		client, err := f.APIClient()
+		if err != nil {
+			return err
+		}
+
+		var resp struct {
+			Models []map[string]interface{} `json:"models"`
+		}
+		if err := client.Get(cmd.Context(), "/api/audio/models", nil, &resp); err != nil {
+			return err
+		}
+
+		formatter := f.Formatter()
+		return formatter.WriteList(resp.Models, []output.Column{
+			{Header: "ID", Field: "id"},
+			{Header: "NAME", Field: "name"},
+			{Header: "COST/1K CHARS", Field: "costPer1kChars"},
+			{Header: "SPEED", Field: "speed"},
+		})
+	},
+}
+
 // ============ INIT ============
 
 func init() {
@@ -309,7 +498,21 @@ func init() {
 	mediaTranscribeCmd.Flags().String("language", "", "Audio language (ISO 639-1 code, e.g. en, fr)")
 	mediaTranscribeCmd.Flags().StringP("output", "o", "", "Write transcription to file instead of stdout")
 
+	mediaSpeakCmd.Flags().String("voice", "", "Voice ID")
+	mediaSpeakCmd.Flags().String("model", "", "TTS model ID")
+	mediaSpeakCmd.Flags().Float64("speed", 0, "Speech speed")
+	mediaSpeakCmd.Flags().Int("pitch", 0, "Speech pitch")
+	mediaSpeakCmd.Flags().String("emotion", "", "Speech emotion")
+	mediaSpeakCmd.Flags().StringP("output", "o", "", "Save audio to local file")
+	mediaSpeakCmd.Flags().String("project", "", "Project ID")
+
+	mediaListVoicesCmd.Flags().String("language", "", "Filter by language")
+	mediaListVoicesCmd.Flags().String("gender", "", "Filter by gender")
+
 	mediaCmd.AddCommand(mediaGenerateCmd)
 	mediaCmd.AddCommand(mediaListModelsCmd)
 	mediaCmd.AddCommand(mediaTranscribeCmd)
+	mediaCmd.AddCommand(mediaSpeakCmd)
+	mediaCmd.AddCommand(mediaListVoicesCmd)
+	mediaCmd.AddCommand(mediaListTTSModelsCmd)
 }
