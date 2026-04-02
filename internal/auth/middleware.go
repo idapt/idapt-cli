@@ -23,12 +23,13 @@ const claimsKey contextKey = "claims"
 
 // Middleware handles authentication for incoming requests.
 type Middleware struct {
-	jwt      *JWTValidator
-	apiKey   *APIKeyValidator
-	portAuth PublicPortChecker
-	pages    *errorpages.Pages
-	domain   string // Machine domain (e.g., "my-machine.idapt.app")
-	appURL   string // App URL for auth redirects (e.g., "https://idapt.ai")
+	jwt         *JWTValidator
+	apiKey      *APIKeyValidator
+	portAuth    PublicPortChecker
+	pages       *errorpages.Pages
+	domain      string // Machine domain (e.g., "my-machine.idapt.app")
+	appURL      string // App URL for auth redirects (e.g., "https://idapt.ai")
+	jwksFetcher *JWKSFetcher // for on-demand JWKS refresh when JWT validation fails
 }
 
 // NewMiddleware creates auth middleware.
@@ -44,6 +45,13 @@ func NewMiddleware(jwt *JWTValidator, apiKey *APIKeyValidator, portAuth PublicPo
 		domain:   domain,
 		appURL:   appURL,
 	}
+}
+
+// SetJWKSFetcher enables on-demand JWKS refresh when JWT validation fails.
+// When set, handleAuthCallback will retry validation once after refreshing
+// the JWKS key — handles key rotation without daemon restart.
+func (m *Middleware) SetJWKSFetcher(fetcher *JWKSFetcher) {
+	m.jwksFetcher = fetcher
 }
 
 // Wrap returns an http.HandlerFunc that enforces authentication before
@@ -121,11 +129,22 @@ func (m *Middleware) handleAuthCallback(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Validate the JWT before setting cookie (prevent storing garbage)
+	// Validate the JWT before setting cookie (prevent storing garbage).
+	// On failure, try refreshing the JWKS key once and retry — handles key
+	// rotation (e.g., server deploy with new signing key) without daemon restart.
 	if _, err := m.jwt.Validate(token); err != nil {
+		if m.jwksFetcher != nil {
+			if refreshErr := m.jwksFetcher.RefreshNow(); refreshErr == nil {
+				if _, retryErr := m.jwt.Validate(token); retryErr == nil {
+					// Succeeded after JWKS refresh — fall through to set cookie
+					goto setCookie
+				}
+			}
+		}
 		http.Error(w, "invalid or expired token", http.StatusUnauthorized)
 		return
 	}
+setCookie:
 
 	// Sanitize redirect path to prevent open redirects
 	redirectPath = sanitizeRedirectPath(redirectPath)
@@ -152,7 +171,8 @@ func (m *Middleware) handleAuthCallback(w http.ResponseWriter, r *http.Request) 
 }
 
 // redirectToAuth sends a 302 redirect to the idapt.ai auth endpoint
-// with the machine slug and original path as query parameters.
+// with the machine slug, original path, and port as query parameters.
+// The port is preserved so the auth callback redirects back to the same port.
 func (m *Middleware) redirectToAuth(w http.ResponseWriter, r *http.Request) {
 	slug := extractSlug(m.domain)
 	originalPath := r.URL.Path
@@ -165,6 +185,13 @@ func (m *Middleware) redirectToAuth(w http.ResponseWriter, r *http.Request) {
 		url.QueryEscape(slug),
 		url.QueryEscape(originalPath),
 	)
+
+	// Preserve the port so the auth callback redirects back to the correct port.
+	// Dynamic listeners inject their port into the request context.
+	if port := listener.ListenerPortFromContext(r.Context()); port > 0 {
+		authURL += fmt.Sprintf("&port=%d", port)
+	}
+
 	http.Redirect(w, r, authURL, http.StatusFound)
 }
 

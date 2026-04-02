@@ -807,6 +807,124 @@ func TestFetch_InvalidBase64Y(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// RefreshNow tests
+// ---------------------------------------------------------------------------
+
+func TestRefreshNow_UpdatesKey(t *testing.T) {
+	// Start with key A, then switch server to key B, and verify RefreshNow updates.
+	keyA := generateTestEC256Key(t)
+	keyB := generateTestEC256Key(t)
+
+	currentKey := &keyA.PublicKey
+	var mu sync.Mutex
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		k := currentKey
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(buildJWKSResponse(t, k))
+	}))
+	defer srv.Close()
+
+	fetcher := NewJWKSFetcher(srv.URL)
+	ctx := context.Background()
+	if err := fetcher.FetchWithRetry(ctx); err != nil {
+		t.Fatalf("initial fetch failed: %v", err)
+	}
+
+	// Verify initial key is A
+	gotKey := fetcher.GetPublicKey()
+	if gotKey.X.Cmp(keyA.PublicKey.X) != 0 {
+		t.Fatal("initial key should be keyA")
+	}
+
+	// Switch server to key B
+	mu.Lock()
+	currentKey = &keyB.PublicKey
+	mu.Unlock()
+
+	// RefreshNow should update to key B
+	if err := fetcher.RefreshNow(); err != nil {
+		t.Fatalf("RefreshNow failed: %v", err)
+	}
+
+	gotKey = fetcher.GetPublicKey()
+	if gotKey.X.Cmp(keyB.PublicKey.X) != 0 {
+		t.Fatal("after RefreshNow, key should be keyB")
+	}
+}
+
+func TestRefreshNow_RateLimited(t *testing.T) {
+	key := generateTestEC256Key(t)
+	fetchCount := 0
+	var mu sync.Mutex
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		fetchCount++
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(buildJWKSResponse(t, &key.PublicKey))
+	}))
+	defer srv.Close()
+
+	fetcher := NewJWKSFetcher(srv.URL)
+	ctx := context.Background()
+	if err := fetcher.FetchWithRetry(ctx); err != nil {
+		t.Fatalf("initial fetch failed: %v", err)
+	}
+
+	mu.Lock()
+	fetchCount = 0 // reset after initial fetch
+	mu.Unlock()
+
+	// First RefreshNow should fetch
+	fetcher.RefreshNow()
+
+	// Second RefreshNow immediately should be rate-limited (no fetch)
+	fetcher.RefreshNow()
+	fetcher.RefreshNow()
+
+	mu.Lock()
+	count := fetchCount
+	mu.Unlock()
+
+	// Only 1 fetch should have happened (rate-limited)
+	if count != 1 {
+		t.Errorf("expected 1 fetch (rate-limited), got %d", count)
+	}
+}
+
+func TestRefreshNow_CallsOnRefresh(t *testing.T) {
+	key := generateTestEC256Key(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(buildJWKSResponse(t, &key.PublicKey))
+	}))
+	defer srv.Close()
+
+	fetcher := NewJWKSFetcher(srv.URL)
+	ctx := context.Background()
+	if err := fetcher.FetchWithRetry(ctx); err != nil {
+		t.Fatalf("initial fetch failed: %v", err)
+	}
+
+	var callbackCalled bool
+	fetcher.SetOnRefresh(func(k *ecdsa.PublicKey) {
+		callbackCalled = true
+	})
+
+	if err := fetcher.RefreshNow(); err != nil {
+		t.Fatalf("RefreshNow failed: %v", err)
+	}
+
+	if !callbackCalled {
+		t.Error("onRefresh callback should have been called")
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Helpers (re-used from jwt_test.go — package-level, no conflict since
 // both files are in the same test package).
 // ---------------------------------------------------------------------------

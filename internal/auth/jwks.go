@@ -44,12 +44,18 @@ type jwkKey struct {
 	Alg string `json:"alg"`
 }
 
+// jwksMinRefreshInterval is the minimum time between on-demand RefreshNow calls.
+// Prevents excessive JWKS fetches when multiple requests fail simultaneously.
+const jwksMinRefreshInterval = 30 * time.Second
+
 // JWKSFetcher fetches and caches an ECDSA P-256 public key from a JWKS endpoint.
-// It supports startup fetch with retry, background refresh, and thread-safe access.
+// It supports startup fetch with retry, background refresh, on-demand refresh
+// (for key rotation handling), and thread-safe access.
 type JWKSFetcher struct {
 	jwksURL         string
 	mu              sync.RWMutex
 	publicKey       *ecdsa.PublicKey
+	lastRefresh     time.Time // for rate-limiting on-demand RefreshNow calls
 	refreshInterval time.Duration
 	client          *http.Client
 	// onRefresh is called after a successful background refresh with the new key.
@@ -141,6 +147,7 @@ func (f *JWKSFetcher) StartRefreshLoop(ctx context.Context) {
 
 				f.mu.Lock()
 				f.publicKey = key
+				f.lastRefresh = time.Now()
 				f.mu.Unlock()
 
 				log.Printf("JWKS key refreshed successfully")
@@ -151,6 +158,35 @@ func (f *JWKSFetcher) StartRefreshLoop(ctx context.Context) {
 			}
 		}
 	}()
+}
+
+// RefreshNow triggers an immediate JWKS key refresh, rate-limited to once per
+// jwksMinRefreshInterval. Used by the auth callback to handle key rotation:
+// when a JWT validation fails, the middleware calls RefreshNow and retries once.
+func (f *JWKSFetcher) RefreshNow() error {
+	f.mu.RLock()
+	tooSoon := time.Since(f.lastRefresh) < jwksMinRefreshInterval
+	f.mu.RUnlock()
+	if tooSoon {
+		return nil // rate-limited
+	}
+
+	key, err := f.fetch()
+	if err != nil {
+		return err
+	}
+
+	f.mu.Lock()
+	f.publicKey = key
+	f.lastRefresh = time.Now()
+	f.mu.Unlock()
+
+	log.Printf("JWKS key refreshed on-demand (validation retry)")
+
+	if f.onRefresh != nil {
+		f.onRefresh(key)
+	}
+	return nil
 }
 
 // fetch performs a single HTTP GET to the JWKS URL and parses the first

@@ -57,9 +57,10 @@ func runServe(cmd *cobra.Command, args []string) error {
 
 	// Initialize JWT validator — prefer JWKS (dynamic key fetch) over static PEM.
 	var jwtValidator *auth.JWTValidator
+	var jwksFetcher *auth.JWKSFetcher // hoisted for middleware retry-on-failure
 	if cfg.JwksURL != "" {
 		log.Printf("Fetching JWT public key from JWKS endpoint: %s", cfg.JwksURL)
-		jwksFetcher := auth.NewJWKSFetcher(cfg.JwksURL)
+		jwksFetcher = auth.NewJWKSFetcher(cfg.JwksURL)
 
 		fetchCtx, fetchCancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		if err := jwksFetcher.FetchWithRetry(fetchCtx); err != nil {
@@ -105,6 +106,9 @@ func runServe(cmd *cobra.Command, args []string) error {
 
 	// Auth middleware — uses proxy config for per-port auth mode (not firewall)
 	authMiddleware := auth.NewMiddleware(jwtValidator, apiKeyValidator, proxyCfg, pages, cfg.Domain, cfg.AppURL)
+	if jwksFetcher != nil {
+		authMiddleware.SetJWKSFetcher(jwksFetcher)
+	}
 
 	// HTTP mux
 	mux := http.NewServeMux()

@@ -213,11 +213,15 @@ func readJSON(t *testing.T, resp *http.Response) map[string]interface{} {
 
 // computeHMAC computes HMAC-SHA256 for daemon management APIs.
 // Format: METHOD:PATH:TIMESTAMP
-// Note: the daemon uses []byte(machineToken) directly as the HMAC key,
-// so we must pass the raw token string, not hex-decode it.
+// The daemon hex-decodes the machineToken before using it as HMAC key,
+// so we must do the same here (the app returns it as hex-encoded bytes).
 func computeHMAC(method, path, timestamp, secret string) string {
 	message := fmt.Sprintf("%s:%s:%s", method, path, timestamp)
-	mac := hmac.New(sha256.New, []byte(secret))
+	keyBytes, err := hex.DecodeString(secret)
+	if err != nil {
+		keyBytes = []byte(secret) // fallback: raw bytes if not valid hex
+	}
+	mac := hmac.New(sha256.New, keyBytes)
 	mac.Write([]byte(message))
 	return hex.EncodeToString(mac.Sum(nil))
 }
