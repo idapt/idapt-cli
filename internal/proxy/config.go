@@ -105,6 +105,26 @@ func (cm *ConfigManager) SetConfig(cfg Config) error {
 	return nil
 }
 
+// ReloadFromDisk re-reads proxy.json from disk and reconciles listeners.
+// Used by the SIGHUP handler when the config is updated via SSH instead of the API.
+func (cm *ConfigManager) ReloadFromDisk() error {
+	data, err := os.ReadFile(cm.path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			// No config file — use empty config
+			return cm.SetConfig(Config{Ports: []ProxyPort{}})
+		}
+		return fmt.Errorf("read proxy config: %w", err)
+	}
+
+	var cfg Config
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return fmt.Errorf("parse proxy config: %w", err)
+	}
+
+	return cm.SetConfig(cfg)
+}
+
 // GetAuthMode returns the auth mode for a given port.
 // Returns "authenticated" if the port is not in the config (default).
 func (cm *ConfigManager) GetAuthMode(port int) string {

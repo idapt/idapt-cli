@@ -342,7 +342,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 
 	// Graceful shutdown / seamless restart
 	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT, syscall.SIGUSR1)
+	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT, syscall.SIGUSR1, syscall.SIGHUP)
 	// In test mode, also listen on the test signal channel
 	if testSigCh != nil {
 		go func() {
@@ -352,35 +352,46 @@ func runServe(cmd *cobra.Command, args []string) error {
 		}()
 	}
 
-	select {
-	case sig := <-sigCh:
-		if sig == syscall.SIGUSR1 {
-			// Seamless restart: graceful shutdown then exec() the new binary.
-			// The update command sends SIGUSR1 after replacing the binary on disk.
-			// syscall.Exec replaces this process in-place (same PID, no systemd restart).
-			log.Printf("Received SIGUSR1 — restarting with updated binary...")
-
-			cancel() // stop heartbeat
-
-			drainCtx, drainCancel := context.WithTimeout(context.Background(), 5*time.Second)
-			lm.Shutdown(drainCtx)
-			httpsServer.Shutdown(drainCtx)
-			httpServer.Shutdown(drainCtx)
-			drainCancel()
-
-			exe, err := os.Executable()
-			if err != nil {
-				log.Fatalf("Failed to resolve executable path for restart: %v", err)
+	for {
+		select {
+		case sig := <-sigCh:
+			if sig == syscall.SIGHUP {
+				// Reload proxy config from disk (used when config is pushed via SSH)
+				log.Printf("Received SIGHUP — reloading proxy config from disk")
+				if err := proxyCfg.ReloadFromDisk(); err != nil {
+					log.Printf("WARN: proxy config reload failed: %v", err)
+				} else {
+					log.Printf("Proxy config reloaded from disk: %d ports", proxyCfg.PortCount())
+				}
+				continue // keep running, don't shut down
 			}
-			log.Printf("Exec'ing new binary: %s %v", exe, os.Args)
-			if err := syscall.Exec(exe, os.Args, os.Environ()); err != nil {
-				log.Fatalf("Exec failed (systemd will restart with new binary): %v", err)
+			if sig == syscall.SIGUSR1 {
+				// Seamless restart: graceful shutdown then exec() the new binary.
+				log.Printf("Received SIGUSR1 — restarting with updated binary...")
+
+				cancel() // stop heartbeat
+
+				drainCtx, drainCancel := context.WithTimeout(context.Background(), 5*time.Second)
+				lm.Shutdown(drainCtx)
+				httpsServer.Shutdown(drainCtx)
+				httpServer.Shutdown(drainCtx)
+				drainCancel()
+
+				exe, err := os.Executable()
+				if err != nil {
+					log.Fatalf("Failed to resolve executable path for restart: %v", err)
+				}
+				log.Printf("Exec'ing new binary: %s %v", exe, os.Args)
+				if err := syscall.Exec(exe, os.Args, os.Environ()); err != nil {
+					log.Fatalf("Exec failed (systemd will restart with new binary): %v", err)
+				}
+				// unreachable — Exec replaces the process
 			}
-			// unreachable — Exec replaces the process
+			log.Printf("Received %s, shutting down gracefully...", sig)
+		case err := <-errCh:
+			log.Printf("Server error: %v, shutting down...", err)
 		}
-		log.Printf("Received %s, shutting down gracefully...", sig)
-	case err := <-errCh:
-		log.Printf("Server error: %v, shutting down...", err)
+		break // exit the for loop to proceed with shutdown
 	}
 
 	cancel() // stop heartbeat
