@@ -28,7 +28,7 @@ func TestAuthLoginAPIKey(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error for invalid prefix")
 		}
-		if !strings.Contains(err.Error(), "must start with idapt_") {
+		if !strings.Contains(err.Error(), "API key must start with") {
 			t.Errorf("expected prefix error, got: %v", err)
 		}
 	})

@@ -21,8 +21,8 @@ var authLoginCmd = &cobra.Command{
 		apiKey, _ := cmd.Flags().GetString("api-key")
 
 		if apiKey != "" {
-			if !strings.HasPrefix(apiKey, "idapt_") {
-				return fmt.Errorf("API key must start with idapt_")
+			if !strings.HasPrefix(apiKey, "uk_") && !strings.HasPrefix(apiKey, "idapt_") && !strings.HasPrefix(apiKey, "ak_") && !strings.HasPrefix(apiKey, "pk_") {
+				return fmt.Errorf("API key must start with uk_, ak_, pk_, or idapt_")
 			}
 			creds := credential.Credentials{APIKey: apiKey}
 			if err := credential.Save(credential.DefaultPath(), creds); err != nil {
@@ -97,7 +97,7 @@ var authStatusCmd = &cobra.Command{
 }
 
 func init() {
-	authLoginCmd.Flags().String("api-key", "", "API key (idapt_...)")
+	authLoginCmd.Flags().String("api-key", "", "API key (uk_..., ak_..., pk_...)")
 	authLoginCmd.Flags().String("email", "", "Email address")
 	authLoginCmd.Flags().String("password", "", "Password")
 
