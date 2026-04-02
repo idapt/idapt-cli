@@ -84,10 +84,14 @@ func (h *Heartbeat) send(ctx context.Context) {
 
 	req.Header.Set("Content-Type", "application/json")
 
-	// HMAC signature
+	// HMAC signature — machineToken is hex-encoded, decode to binary for key
 	timestamp := fmt.Sprintf("%d", time.Now().Unix())
 	message := "POST:/api/managed-machines/" + h.machineID + "/heartbeat:" + timestamp
-	mac := hmac.New(sha256.New, []byte(h.machineToken))
+	keyBytes, err := hex.DecodeString(h.machineToken)
+	if err != nil {
+		keyBytes = []byte(h.machineToken) // fallback: raw bytes if not valid hex
+	}
+	mac := hmac.New(sha256.New, keyBytes)
 	mac.Write([]byte(message))
 	signature := hex.EncodeToString(mac.Sum(nil))
 

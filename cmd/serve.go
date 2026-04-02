@@ -299,8 +299,11 @@ func runServe(cmd *cobra.Command, args []string) error {
 	// Dynamic multi-port TLS listener manager
 	lm := listener.New(mux, tlsConfig, cfg.Domain, errCh)
 
-	// Generate self-signed cert for direct IP access (non-fatal)
+	// Detect public IP for:
+	// 1. Binding dynamic listeners to public IP only (avoids conflict with 127.0.0.1 services)
+	// 2. Self-signed cert for direct IP access
 	if publicIP := network.GetPublicIP(); publicIP != "" {
+		lm.SetPublicIP(publicIP)
 		if err := lm.SetIPCert(publicIP, cfg.Domain); err != nil {
 			log.Printf("WARN: Failed to generate IP cert: %v", err)
 		}

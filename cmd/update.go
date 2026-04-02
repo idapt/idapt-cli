@@ -9,6 +9,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/idapt/idapt-cli/internal/config"
 	"github.com/idapt/idapt-cli/internal/update"
 	"github.com/spf13/cobra"
 )
@@ -20,8 +21,13 @@ var updateCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		appURL := os.Getenv("IDAPT_APP_URL")
 		if appURL == "" {
-			// Try to read from config
-			appURL = "http://localhost:3000"
+			// Try to read appUrl from daemon config
+			if cfg, err := config.Load(configPath); err == nil {
+				appURL = cfg.AppURL
+			}
+		}
+		if appURL == "" {
+			appURL = "https://idapt.ai"
 		}
 
 		binaryPath, err := os.Executable()

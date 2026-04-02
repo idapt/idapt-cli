@@ -23,7 +23,12 @@ func ValidateMachineHMAC(r *http.Request, machineToken string) error {
 	}
 
 	message := r.Method + ":" + r.URL.Path + ":" + timestamp
-	mac := hmac.New(sha256.New, []byte(machineToken))
+	// machineToken is hex-encoded, decode to binary for HMAC key
+	keyBytes, decodeErr := hex.DecodeString(machineToken)
+	if decodeErr != nil {
+		keyBytes = []byte(machineToken) // fallback: raw bytes if not valid hex
+	}
+	mac := hmac.New(sha256.New, keyBytes)
 	mac.Write([]byte(message))
 	expectedSig := hex.EncodeToString(mac.Sum(nil))
 

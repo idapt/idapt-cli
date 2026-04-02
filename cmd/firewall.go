@@ -260,7 +260,12 @@ func putRulesToApp(cfg *config.Config, rules []firewall.Rule) error {
 }
 
 func computeHMAC(message, key string) string {
-	mac := hmac.New(sha256.New, []byte(key))
+	// key is hex-encoded, decode to binary for HMAC
+	keyBytes, err := hex.DecodeString(key)
+	if err != nil {
+		keyBytes = []byte(key) // fallback: raw bytes if not valid hex
+	}
+	mac := hmac.New(sha256.New, keyBytes)
 	mac.Write([]byte(message))
 	return hex.EncodeToString(mac.Sum(nil))
 }

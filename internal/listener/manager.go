@@ -36,6 +36,7 @@ type ListenerManager struct {
 	tlsConfig *tls.Config          // CertMagic TLS config (ACME cert)
 	ipCert    *tls.Certificate     // self-signed cert with IP SAN
 	domain    string
+	publicIP  string          // bind dynamic listeners to this IP (avoids conflict with 127.0.0.1 services)
 	errCh     chan<- error // propagate fatal listener errors
 }
 
@@ -51,6 +52,24 @@ func New(handler http.Handler, tlsConfig *tls.Config, domain string, errCh chan<
 		domain:    domain,
 		errCh:     errCh,
 	}
+}
+
+// SetPublicIP sets the public IP to bind dynamic listeners to.
+// When set, listeners bind to {publicIP}:{port} instead of 0.0.0.0:{port},
+// allowing backend services to coexist on 127.0.0.1:{port}.
+func (lm *ListenerManager) SetPublicIP(ip string) {
+	lm.mu.Lock()
+	defer lm.mu.Unlock()
+	lm.publicIP = ip
+}
+
+// bindAddr returns the bind address for a dynamic listener port.
+// Uses publicIP:{port} when available, falls back to :{port} (all interfaces).
+func (lm *ListenerManager) bindAddr(port int) string {
+	if lm.publicIP != "" {
+		return fmt.Sprintf("%s:%d", lm.publicIP, port)
+	}
+	return fmt.Sprintf(":%d", port)
 }
 
 // Reconcile diffs the current set of active listeners against the desired TCP
@@ -98,7 +117,7 @@ func (lm *ListenerManager) startListener(port int) {
 	})
 
 	srv := &http.Server{
-		Addr:      fmt.Sprintf(":%d", port),
+		Addr:      lm.bindAddr(port),
 		Handler:   wrappedHandler,
 		TLSConfig: lm.buildTLSConfig(),
 	}

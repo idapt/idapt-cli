@@ -82,6 +82,7 @@ func waitForRequests(mu *sync.Mutex, captured *[]capturedRequest, n int, timeout
 func TestHeartbeat_MessageFormat(t *testing.T) {
 	// The HMAC message must follow the format:
 	// POST:/api/managed-machines/{machineId}/heartbeat:{timestamp}
+	// Token is a plain (non-hex) string — falls back to raw bytes.
 	machineID := "test-machine-123"
 	token := "secret-token"
 
@@ -103,7 +104,8 @@ func TestHeartbeat_MessageFormat(t *testing.T) {
 	req := (*captured)[0]
 	mu.Unlock()
 
-	// Verify the HMAC can be reconstructed from the expected message format
+	// Verify the HMAC can be reconstructed from the expected message format.
+	// Token "secret-token" is not valid hex, so heartbeat falls back to []byte(token).
 	ts := req.Headers.Get("X-Machine-Timestamp")
 	if ts == "" {
 		t.Fatal("X-Machine-Timestamp header missing")
@@ -386,6 +388,59 @@ func TestHeartbeat_MockServer_VerifyHMAC(t *testing.T) {
 
 	if !valid {
 		t.Error("HMAC signature sent by heartbeat did not match expected value computed by mock server")
+	}
+}
+
+func TestHeartbeat_HexEncodedToken(t *testing.T) {
+	// Verify the heartbeat correctly decodes a hex-encoded machineToken
+	// to binary before using it as HMAC key — matches the TypeScript server
+	// which uses the raw binary Buffer from deriveHeartbeatSecret().
+	machineID := "hex-test-machine"
+	// Simulate a real provisioned token: 32 random bytes hex-encoded to 64 chars
+	rawKey := []byte("this-is-a-32-byte-key-for-hmac!")
+	hexToken := hex.EncodeToString(rawKey) // what gets written to config.json
+
+	srv, captured, mu := newTestServer(t, 200)
+
+	hb := New(srv.URL, machineID, hexToken, "1.0.0")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go hb.Start(ctx)
+
+	if !waitForRequests(mu, captured, 1, 5*time.Second) {
+		t.Fatal("timed out waiting for heartbeat request")
+	}
+	cancel()
+
+	mu.Lock()
+	req := (*captured)[0]
+	mu.Unlock()
+
+	ts := req.Headers.Get("X-Machine-Timestamp")
+	if ts == "" {
+		t.Fatal("X-Machine-Timestamp header missing")
+	}
+
+	// The heartbeat should have used the DECODED binary as the HMAC key,
+	// NOT the hex string itself. Verify by recomputing with the raw key.
+	message := fmt.Sprintf("POST:/api/managed-machines/%s/heartbeat:%s", machineID, ts)
+	mac := hmac.New(sha256.New, rawKey) // use raw binary, not hex string
+	mac.Write([]byte(message))
+	expectedSig := hex.EncodeToString(mac.Sum(nil))
+
+	gotSig := req.Headers.Get("X-Machine-Signature")
+	if gotSig != expectedSig {
+		t.Errorf("hex-decoded HMAC mismatch\n  got:      %s\n  expected: %s\n  (using decoded binary key, not hex string)", gotSig, expectedSig)
+	}
+
+	// Also verify it does NOT match the old (buggy) behavior of using hex string as raw bytes
+	oldMac := hmac.New(sha256.New, []byte(hexToken))
+	oldMac.Write([]byte(message))
+	oldSig := hex.EncodeToString(oldMac.Sum(nil))
+	if gotSig == oldSig {
+		t.Error("heartbeat is using hex string as raw bytes (old bug) instead of decoding to binary")
 	}
 }
 
