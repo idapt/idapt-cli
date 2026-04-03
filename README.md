@@ -29,7 +29,7 @@ Or download directly from [GitHub Releases](https://github.com/idapt/idapt-cli/r
 
 ```bash
 # 1. Authenticate
-idapt auth login --api-key idapt_sk_...
+idapt auth login --api-key uk_...
 
 # 2. Explore your workspace
 idapt project list -o table
@@ -64,7 +64,7 @@ Interact with idapt from any terminal — manage projects, agents, files, chats,
 
 ```bash
 # Authenticate
-idapt auth login --api-key idapt_...
+idapt auth login --api-key uk_...
 idapt auth status
 
 # Manage resources

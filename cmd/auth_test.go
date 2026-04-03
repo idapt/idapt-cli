@@ -7,13 +7,13 @@ import (
 )
 
 func TestAuthLoginAPIKey(t *testing.T) {
-	t.Run("valid API key with idapt_ prefix", func(t *testing.T) {
+	t.Run("valid API key with uk_ prefix", func(t *testing.T) {
 		// auth login --api-key uses credential.Save, which writes to disk.
 		// We test the validation path: a valid prefix should print success.
 		// Since credential.Save writes to DefaultPath, this test only validates
 		// the command flow up to that point by checking it does not error on prefix.
 		handler := mockHandler(map[string]func(w http.ResponseWriter, r *http.Request){})
-		stdout, _, err := runCmd(t, handler, "auth", "login", "--api-key", "idapt_test123abc")
+		stdout, _, err := runCmd(t, handler, "auth", "login", "--api-key", "uk_test123abc")
 		if err != nil {
 			t.Fatalf("expected no error, got: %v", err)
 		}

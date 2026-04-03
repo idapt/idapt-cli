@@ -48,7 +48,7 @@ func TestIntegration_Auth_InvalidAPIKey(t *testing.T) {
 
 	badClient, err := api.NewClient(api.ClientConfig{
 		BaseURL: baseURL,
-		APIKey:  "idapt_invalid_key_that_does_not_exist",
+		APIKey:  "uk_invalid_key_that_does_not_exist",
 	})
 	if err != nil {
 		t.Fatalf("create bad client: %v", err)

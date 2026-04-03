@@ -21,8 +21,8 @@ var authLoginCmd = &cobra.Command{
 		apiKey, _ := cmd.Flags().GetString("api-key")
 
 		if apiKey != "" {
-			if !strings.HasPrefix(apiKey, "uk_") && !strings.HasPrefix(apiKey, "idapt_") && !strings.HasPrefix(apiKey, "ak_") && !strings.HasPrefix(apiKey, "pk_") {
-				return fmt.Errorf("API key must start with uk_, ak_, pk_, or idapt_")
+			if !strings.HasPrefix(apiKey, "uk_") && !strings.HasPrefix(apiKey, "ak_") && !strings.HasPrefix(apiKey, "pk_") && !strings.HasPrefix(apiKey, "mk_") {
+				return fmt.Errorf("API key must start with uk_, ak_, pk_, or mk_")
 			}
 			creds := credential.Credentials{APIKey: apiKey}
 			if err := credential.Save(credential.DefaultPath(), creds); err != nil {

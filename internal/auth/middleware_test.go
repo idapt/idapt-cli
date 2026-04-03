@@ -1109,7 +1109,7 @@ func TestAPIKey_NonMKBearer(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/api/data", nil)
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Authorization", "Bearer idapt_some-other-key")
+	req.Header.Set("Authorization", "Bearer uk_some-other-key")
 	w := httptest.NewRecorder()
 
 	mw.Wrap(okHandler)(w, req)
