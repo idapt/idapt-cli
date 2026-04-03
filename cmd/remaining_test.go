@@ -274,7 +274,7 @@ func TestShareList(t *testing.T) {
 		"GET /api/shared-with-me": func(w http.ResponseWriter, r *http.Request) {
 			jsonResponse(w, 200, map[string]interface{}{
 				"shares": []map[string]interface{}{
-					{"id": "sh1", "resourceType": "task-board", "resourceName": "Sprint Board", "access": "read", "sharedBy": "bob"},
+					{"id": "sh1", "resourceType": "agent", "resourceName": "My Agent", "access": "read", "sharedBy": "bob"},
 				},
 			})
 		},
@@ -287,7 +287,7 @@ func TestShareList(t *testing.T) {
 
 func TestShareCreate(t *testing.T) {
 	h := mockHandler(map[string]func(w http.ResponseWriter, r *http.Request){
-		"POST /api/tasks/boards/board-1/shares": func(w http.ResponseWriter, r *http.Request) {
+		"POST /api/agents/agent-1/shares": func(w http.ResponseWriter, r *http.Request) {
 			var body map[string]interface{}
 			json.NewDecoder(r.Body).Decode(&body)
 			if body["email"] != "bob@example.com" {
@@ -299,7 +299,7 @@ func TestShareCreate(t *testing.T) {
 			jsonResponse(w, 201, map[string]interface{}{"id": "sh2"})
 		},
 	})
-	stdout, _, err := runCmd(t, h, "share", "create", "task-board", "board-1", "--email", "bob@example.com", "--access", "write")
+	stdout, _, err := runCmd(t, h, "share", "create", "agent", "agent-1", "--email", "bob@example.com", "--access", "write")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -310,7 +310,7 @@ func TestShareCreate(t *testing.T) {
 
 func TestShareCreateMissingEmail(t *testing.T) {
 	h := mockHandler(map[string]func(w http.ResponseWriter, r *http.Request){})
-	_, _, err := runCmd(t, h, "share", "create", "task-board", "board-1")
+	_, _, err := runCmd(t, h, "share", "create", "agent", "agent-1")
 	if err == nil {
 		t.Fatal("expected error when --email is missing")
 	}
@@ -321,11 +321,11 @@ func TestShareCreateMissingEmail(t *testing.T) {
 
 func TestShareDelete(t *testing.T) {
 	h := mockHandler(map[string]func(w http.ResponseWriter, r *http.Request){
-		"DELETE /api/tasks/boards/board-1/shares/sh1": func(w http.ResponseWriter, r *http.Request) {
+		"DELETE /api/agents/agent-1/shares/sh1": func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(204)
 		},
 	})
-	stdout, _, err := runCmd(t, h, "share", "delete", "task-board", "board-1", "sh1")
+	stdout, _, err := runCmd(t, h, "share", "delete", "agent", "agent-1", "sh1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

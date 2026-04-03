@@ -219,7 +219,6 @@ func createAPIKey(base, cookie string) (string, error) {
 			"files":    []string{"read", "write"},
 			"chat":     []string{"read", "write"},
 			"kb":       []string{"read", "write"},
-			"tasks":    []string{"read", "write"},
 			"machines": []string{"read", "write"},
 			"scripts":  []string{"read", "write"},
 			"secrets":  []string{"read", "write"},

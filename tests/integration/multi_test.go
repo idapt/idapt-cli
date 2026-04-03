@@ -53,22 +53,4 @@ func TestIntegration_Workflow_ProjectWithMultipleResources(t *testing.T) {
 			t.Fatalf("agent %s not found in project's agent list", id)
 		}
 	}
-
-	// Create a task for the project
-	boardID := getPersonalBoardID(t)
-	status, result = rawPost(t, "/api/tasks/boards/"+boardID+"/items", map[string]interface{}{
-		"title": uniqueName("multi-task"),
-	})
-	if status == 201 {
-		item := getMap(result, "item")
-		if item == nil {
-			item = result
-		}
-		itemID := getString(item, "id")
-		if itemID != "" {
-			t.Cleanup(func() {
-				rawDelete(t, "/api/tasks/items/"+itemID)
-			})
-		}
-	}
 }

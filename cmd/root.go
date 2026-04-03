@@ -113,7 +113,6 @@ func init() {
 	rootCmd.AddCommand(agentCmd)
 	rootCmd.AddCommand(chatCmd)
 	rootCmd.AddCommand(fileCmd)
-	rootCmd.AddCommand(taskCmd)
 	rootCmd.AddCommand(machineRemoteCmd)
 	rootCmd.AddCommand(scriptCmd)
 	rootCmd.AddCommand(secretCmd)

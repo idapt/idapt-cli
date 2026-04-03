@@ -55,10 +55,6 @@ var multiAgentChatCreateCmd = &cobra.Command{
 			v, _ := cmd.Flags().GetString("message")
 			overrides["message"] = v
 		}
-		if cmd.Flags().Changed("task") {
-			v, _ := cmd.Flags().GetString("task")
-			overrides["assignedTask"] = v
-		}
 		body = input.MergeFlags(body, overrides)
 
 		var resp map[string]interface{}
@@ -265,7 +261,6 @@ func init() {
 	multiAgentChatCreateCmd.Flags().String("parent-chat", "", "Parent chat ID")
 	multiAgentChatCreateCmd.Flags().String("agent", "", "Agent ID for the child chat")
 	multiAgentChatCreateCmd.Flags().String("message", "", "Initial message to send")
-	multiAgentChatCreateCmd.Flags().String("task", "", "Assigned task number or path")
 	cmdutil.AddJSONInput(multiAgentChatCreateCmd)
 
 	cmdutil.AddJSONInput(multiAgentChatEditCmd)

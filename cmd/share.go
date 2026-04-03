@@ -44,7 +44,7 @@ var shareListCmd = &cobra.Command{
 var shareCreateCmd = &cobra.Command{
 	Use:   "create <resource-type> <resource-id>",
 	Short: "Share a resource",
-	Long:  "Share a resource (task-board, task-item) with another user.",
+	Long:  "Share a resource with another user.",
 	Args:  cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		f := cmdutil.FactoryFromCmd(cmd)
@@ -67,12 +67,14 @@ var shareCreateCmd = &cobra.Command{
 		// Route to the appropriate shares endpoint based on resource type
 		var path string
 		switch args[0] {
-		case "task-board":
-			path = "/api/tasks/boards/" + args[1] + "/shares"
-		case "task-item":
-			path = "/api/tasks/items/" + args[1] + "/shares"
+		case "file":
+			path = fmt.Sprintf("/api/files/%s/shares", args[1])
+		case "chat":
+			path = fmt.Sprintf("/api/chat/%s/shares", args[1])
+		case "agent":
+			path = fmt.Sprintf("/api/agents/%s/shares", args[1])
 		default:
-			return fmt.Errorf("unsupported resource type: %s (supported: task-board, task-item)", args[0])
+			return fmt.Errorf("unsupported resource type: %s", args[0])
 		}
 
 		var resp map[string]interface{}
@@ -98,10 +100,12 @@ var shareDeleteCmd = &cobra.Command{
 
 		var path string
 		switch args[0] {
-		case "task-board":
-			path = "/api/tasks/boards/" + args[1] + "/shares/" + args[2]
-		case "task-item":
-			path = "/api/tasks/items/" + args[1] + "/shares/" + args[2]
+		case "file":
+			path = fmt.Sprintf("/api/files/%s/shares/%s", args[1], args[2])
+		case "chat":
+			path = fmt.Sprintf("/api/chat/%s/shares/%s", args[1], args[2])
+		case "agent":
+			path = fmt.Sprintf("/api/agents/%s/shares/%s", args[1], args[2])
 		default:
 			return fmt.Errorf("unsupported resource type: %s", args[0])
 		}
