@@ -9,10 +9,10 @@ import (
 )
 
 func TestInstallScriptContent(t *testing.T) {
-	resp := appRequest(t, "GET", "/api/cli/install")
+	resp := appRequest(t, "GET", "/cli/install")
 	if resp.StatusCode != http.StatusOK {
 		body := readBody(t, resp)
-		t.Fatalf("Expected 200 from /api/cli/install, got %d: %s", resp.StatusCode, body)
+		t.Fatalf("Expected 200 from /cli/install, got %d: %s", resp.StatusCode, body)
 	}
 
 	contentType := resp.Header.Get("Content-Type")

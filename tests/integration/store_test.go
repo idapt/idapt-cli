@@ -6,50 +6,44 @@ import (
 	"testing"
 )
 
-func TestIntegration_Store_SearchSkills(t *testing.T) {
+func TestIntegration_Store_SearchTemplates(t *testing.T) {
 	skipIfNoServer(t)
 
-	// Search skill store with empty query -- should return without error
-	status, result := rawGet(t, "/api/skill-store")
+	// Search unified template store with empty query
+	status, result := rawGet(t, "/api/templates?limit=5")
 	if status != 200 {
-		t.Fatalf("GET /api/skill-store returned %d, want 200; body: %v", status, result)
+		t.Fatalf("GET /api/templates returned %d, want 200; body: %v", status, result)
 	}
-	// The response should have an items or data array
 	items := getSlice(result, "items")
 	if items == nil {
-		items = getSlice(result, "data")
+		t.Fatal("response missing 'items' field")
 	}
-	// Even if empty, the endpoint should respond with valid JSON
-	t.Logf("skill store returned %d items", len(items))
+	t.Logf("template store returned %d items", len(items))
 }
 
-func TestIntegration_Store_SearchAgents(t *testing.T) {
+func TestIntegration_Store_SearchByType(t *testing.T) {
 	skipIfNoServer(t)
 
-	// Search agent store with empty query -- should return without error
-	status, result := rawGet(t, "/api/agent-store")
-	if status != 200 {
-		t.Fatalf("GET /api/agent-store returned %d, want 200; body: %v", status, result)
+	for _, typ := range []string{"skill", "agent", "machine"} {
+		t.Run(typ, func(t *testing.T) {
+			status, result := rawGet(t, "/api/templates?type="+typ+"&limit=5")
+			if status != 200 {
+				t.Fatalf("GET /api/templates?type=%s returned %d, want 200; body: %v", typ, status, result)
+			}
+			items := getSlice(result, "items")
+			if items == nil {
+				t.Fatal("response missing 'items' field")
+			}
+			// All returned items should be of the requested type
+			for i, item := range items {
+				m, ok := item.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				if m["type"] != typ {
+					t.Errorf("item %d has type %v, want %s", i, m["type"], typ)
+				}
+			}
+		})
 	}
-	items := getSlice(result, "items")
-	if items == nil {
-		items = getSlice(result, "data")
-	}
-	t.Logf("agent store returned %d items", len(items))
-}
-
-func TestIntegration_Store_SearchScripts(t *testing.T) {
-	skipIfNoServer(t)
-	t.Skip("skipping: /api/script-store route not yet implemented")
-
-	// Search script store with empty query -- should return without error
-	status, result := rawGet(t, "/api/script-store")
-	if status != 200 {
-		t.Fatalf("GET /api/script-store returned %d, want 200; body: %v", status, result)
-	}
-	items := getSlice(result, "items")
-	if items == nil {
-		items = getSlice(result, "data")
-	}
-	t.Logf("script store returned %d items", len(items))
 }
