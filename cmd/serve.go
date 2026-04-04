@@ -14,10 +14,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/idapt/idapt-cli/internal/api"
 	"github.com/idapt/idapt-cli/internal/auth"
 	"github.com/idapt/idapt-cli/internal/config"
 	"github.com/idapt/idapt-cli/internal/errorpages"
 	"github.com/idapt/idapt-cli/internal/firewall"
+	ifuse "github.com/idapt/idapt-cli/internal/fuse"
 	"github.com/idapt/idapt-cli/internal/heartbeat"
 	"github.com/idapt/idapt-cli/internal/listener"
 	"github.com/idapt/idapt-cli/internal/network"
@@ -119,9 +121,23 @@ func runServe(cmd *cobra.Command, args []string) error {
 	mux.HandleFunc("GET /api/firewall/iptables", firewall.NewIptablesReadHandler(cfg.MachineToken))
 	mux.HandleFunc("GET /api/proxy", proxy.NewGetHandler(proxyCfg, cfg.MachineToken))
 	mux.HandleFunc("POST /api/proxy", proxy.NewPostHandler(proxyCfg, cfg.MachineToken))
+	// fuseMountsRef is captured by the health endpoint closure below.
+	// Set after MountManager is initialized (further down in this function).
+	var fuseMountsRef *ifuse.MountManager
+
 	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"status":"ok","version":"` + Version + `","proxyPorts":` + fmt.Sprintf("%d", proxyCfg.PortCount()) + `}`))
+		mountCount := 0
+		if fuseMountsRef != nil {
+			mountCount = len(fuseMountsRef.ActiveMounts())
+		}
+		resp, _ := json.Marshal(map[string]interface{}{
+			"status":     "ok",
+			"version":    Version,
+			"proxyPorts": proxyCfg.PortCount(),
+			"fuseMounts": mountCount,
+		})
+		w.Write(resp)
 	})
 
 	// ACME challenge path — always open, no auth
@@ -297,6 +313,36 @@ func runServe(cmd *cobra.Command, args []string) error {
 		log.Printf("heartbeat: disabled (machineToken not configured)")
 	}
 
+	// FUSE mount manager — auto-mount configured projects
+	fuseMM := ifuse.NewMountManager()
+	fuseMountsRef = fuseMM // expose to health endpoint closure
+	if len(cfg.Mounts) > 0 {
+		// Build API client for FUSE (reuses machine token auth)
+		fuseAPIClient, fuseErr := buildFuseAPIClient(cfg)
+		if fuseErr != nil {
+			log.Printf("fuse-mount: disabled (API client error: %v)", fuseErr)
+		} else {
+			for _, m := range cfg.Mounts {
+				maxCache := int64(m.MaxCacheSizeGB) * 1024 * 1024 * 1024
+				if maxCache == 0 {
+					maxCache = 10 * 1024 * 1024 * 1024 // default 10GB
+				}
+				mountCfg := ifuse.MountConfig{
+					ProjectID:       m.ProjectID,
+					MountPoint:      m.MountPoint,
+					CacheDir:        m.CacheDir,
+					MaxCacheSize:    maxCache,
+					ExcludePatterns: m.ExcludePatterns,
+				}
+				if err := fuseMM.Mount(ctx, mountCfg, fuseAPIClient); err != nil {
+					log.Printf("fuse-mount: failed to mount %s at %s: %v", m.ProjectID, m.MountPoint, err)
+				}
+			}
+		}
+	} else {
+		log.Printf("fuse-mount: no mounts configured")
+	}
+
 	// Start servers
 	errCh := make(chan error, 10)
 
@@ -372,6 +418,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 				cancel() // stop heartbeat
 
 				drainCtx, drainCancel := context.WithTimeout(context.Background(), 5*time.Second)
+				fuseMM.Shutdown(drainCtx) // flush + unmount FUSE
 				lm.Shutdown(drainCtx)
 				httpsServer.Shutdown(drainCtx)
 				httpServer.Shutdown(drainCtx)
@@ -399,10 +446,23 @@ func runServe(cmd *cobra.Command, args []string) error {
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutdownCancel()
 
-	lm.Shutdown(shutdownCtx) // stop dynamic listeners first
+	fuseMM.Shutdown(shutdownCtx) // unmount FUSE first (flush dirty files)
+	lm.Shutdown(shutdownCtx)     // stop dynamic listeners
 	httpsServer.Shutdown(shutdownCtx)
 	httpServer.Shutdown(shutdownCtx)
 
 	log.Printf("idapt stopped")
 	return nil
+}
+
+// buildFuseAPIClient creates an API client for FUSE mount operations.
+func buildFuseAPIClient(cfg *config.Config) (*ifuse.FuseAPIClient, error) {
+	apiClient, err := api.NewClient(api.ClientConfig{
+		BaseURL: cfg.AppURL,
+		APIKey:  cfg.MachineToken, // uses machine token for auth
+	})
+	if err != nil {
+		return nil, err
+	}
+	return ifuse.NewFuseAPIClient(apiClient), nil
 }

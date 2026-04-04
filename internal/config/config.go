@@ -47,6 +47,19 @@ type Config struct {
 	// APIKeyHashes is a list of pre-registered API key SHA-256 hashes (hex-encoded).
 	// Loaded at startup into the APIKeyValidator. Used by cloud-init provisioning.
 	APIKeyHashes []string `json:"apiKeyHashes,omitempty"`
+
+	// Mounts defines FUSE mounts to auto-create on daemon start.
+	// Each mount maps a project to a local mount point.
+	Mounts []MountEntry `json:"mounts,omitempty"`
+}
+
+// MountEntry defines a FUSE mount in the daemon config.
+type MountEntry struct {
+	ProjectID       string   `json:"projectId"`
+	MountPoint      string   `json:"mountPoint"`
+	CacheDir        string   `json:"cacheDir,omitempty"`
+	MaxCacheSizeGB  int      `json:"maxCacheSizeGB,omitempty"` // default 10
+	ExcludePatterns []string `json:"excludePatterns,omitempty"`
 }
 
 // Load reads the config from a JSON file, with env var overrides.

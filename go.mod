@@ -4,7 +4,9 @@ go 1.25.0
 
 require (
 	github.com/caddyserver/certmagic v0.25.2
+	github.com/hanwen/go-fuse/v2 v2.7.2
 	github.com/spf13/cobra v1.10.2
+	github.com/spf13/pflag v1.0.9
 	golang.org/x/crypto v0.49.0
 )
 
@@ -15,7 +17,6 @@ require (
 	github.com/libdns/libdns v1.1.1 // indirect
 	github.com/mholt/acmez/v3 v3.1.6 // indirect
 	github.com/miekg/dns v1.1.72 // indirect
-	github.com/spf13/pflag v1.0.9 // indirect
 	github.com/zeebo/blake3 v0.2.4 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.1 // indirect
