@@ -50,6 +50,7 @@ type FileEntry struct {
 	Prompt           string    `json:"prompt"`
 	DurationMs       int       `json:"durationMs"`
 	PublicAccess     string    `json:"publicAccess"`
+	IsSensitive      bool      `json:"isSensitive"`
 	Extension        string    `json:"extension"`
 	CreatedByActorID string    `json:"createdByActorId"`
 }

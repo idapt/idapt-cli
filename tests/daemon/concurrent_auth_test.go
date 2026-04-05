@@ -3,8 +3,6 @@
 package daemon
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"net/http"
 	"sync"
@@ -45,11 +43,8 @@ func TestConcurrentJWTRequests(t *testing.T) {
 }
 
 func TestConcurrentMixedAuth(t *testing.T) {
-	// Register an API key for bearer auth testing
+	// Bearer tokens pass through to app — no daemon-side registration needed
 	apiKey := fmt.Sprintf("mk_test_concurrent_%d", time.Now().UnixNano())
-	h := sha256.Sum256([]byte(apiKey))
-	apiKeyHash := hex.EncodeToString(h[:])
-	registerAPIKeyHash(t, apiKeyHash)
 
 	// Get a valid JWT
 	jwt := issueJWTViaApp(t, "/")

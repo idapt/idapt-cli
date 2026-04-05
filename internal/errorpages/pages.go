@@ -72,7 +72,7 @@ var unauthenticatedHTML = `<!DOCTYPE html>
 <p>You need to sign in to access <strong>%s</strong>.</p>
 <p>Please log in through the idapt app to get access to this machine.</p>
 <a class="btn" href="%s">Sign in at idapt</a>
-<p style="margin-top:2rem;font-size:0.85rem">If you have an API key, include it as <code>Authorization: Bearer mk_...</code></p>
+<p style="margin-top:2rem;font-size:0.85rem">If you have an API key, include it as <code>Authorization: Bearer uk_...</code></p>
 </div>
 </body>
 </html>`

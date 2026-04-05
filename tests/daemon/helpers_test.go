@@ -43,8 +43,6 @@ var (
 	testUserActorID string
 	testProjectID   string
 
-	// API key for daemon auth testing
-	testAPIKeyRaw string
 )
 
 func TestMain(m *testing.M) {
@@ -360,17 +358,6 @@ func triggerDaemonRestart(t *testing.T) {
 	resp.Body.Close()
 }
 
-// registerAPIKeyHash registers an API key hash on the daemon via /__test/apikey.
-func registerAPIKeyHash(t *testing.T, hashHex string) {
-	t.Helper()
-	resp := daemonRequest(t, "POST", "/__test/apikey",
-		withJSON(map[string]string{"hash": hashHex}))
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("API key registration failed: %d", resp.StatusCode)
-	}
-	resp.Body.Close()
-}
-
 // setDaemonMachineID updates the daemon's JWT validator to accept the given machineId.
 func setDaemonMachineID(newMachineID string) error {
 	body, _ := json.Marshal(map[string]string{"machineId": newMachineID})
@@ -604,8 +591,3 @@ func fetchHeartbeatSecret() error {
 	return nil
 }
 
-// hashAPIKey returns the SHA-256 hex hash of an API key.
-func hashAPIKey(key string) string {
-	h := sha256.Sum256([]byte(key))
-	return hex.EncodeToString(h[:])
-}

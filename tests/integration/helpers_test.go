@@ -213,15 +213,8 @@ func TestMain(m *testing.M) {
 func createAPIKey(base, cookie string) (string, error) {
 	body := map[string]interface{}{
 		"name": "cli-integration-test",
-		"permissions": map[string]interface{}{
-			"projects": []string{"read", "write"},
-			"agents":   []string{"read", "write"},
-			"files":    []string{"read", "write"},
-			"chat":     []string{"read", "write"},
-			"kb":       []string{"read", "write"},
-			"machines": []string{"read", "write"},
-			"scripts":  []string{"read", "write"},
-			"secrets":  []string{"read", "write"},
+		"permissions": []map[string]interface{}{
+			{"resource": "*", "access": "write"},
 		},
 	}
 	bodyBytes, _ := json.Marshal(body)

@@ -7,50 +7,55 @@ import (
 	"testing"
 )
 
-func TestAPIKeyValid(t *testing.T) {
-	apiKey := "mk_testkey123"
-	hash := hashAPIKey(apiKey)
-	registerAPIKeyHash(t, hash)
+// Daemon passes through all Bearer tokens to the upstream app for validation.
+// These tests verify the pass-through behavior — the daemon does NOT validate API keys itself.
 
+func TestBearerTokenPassthrough(t *testing.T) {
+	// Any Bearer token passes through the daemon to the backend
 	resp := daemonRequest(t, "GET", "/",
-		withBearer(apiKey))
+		withBearer("mk_testkey123"))
 
-	if resp.StatusCode != http.StatusOK {
+	// 200 (backend) or 502 (no backend) both prove auth passed through
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusBadGateway {
 		body := readBody(t, resp)
-		t.Fatalf("Expected 200 with valid API key, got %d: %s", resp.StatusCode, body)
+		t.Fatalf("Expected 200 or 502 (pass-through), got %d: %s", resp.StatusCode, body)
 	}
 	resp.Body.Close()
 }
 
-func TestAPIKeyInvalid(t *testing.T) {
+func TestBearerTokenInvalidPassthrough(t *testing.T) {
+	// Invalid tokens also pass through — app validates, not daemon
 	resp := daemonRequest(t, "GET", "/",
 		withBearer("mk_wrongkey"))
 
-	if resp.StatusCode != http.StatusUnauthorized {
-		resp.Body.Close()
-		t.Fatalf("Expected 401 for invalid API key, got %d", resp.StatusCode)
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusBadGateway {
+		body := readBody(t, resp)
+		t.Fatalf("Expected 200 or 502 (pass-through), got %d: %s", resp.StatusCode, body)
 	}
 	resp.Body.Close()
 }
 
-func TestAPIKeyWrongPrefix(t *testing.T) {
+func TestBearerTokenWrongPrefixPassthrough(t *testing.T) {
+	// Non-mk_ prefixed tokens also pass through
 	resp := daemonRequest(t, "GET", "/",
 		withBearer("sk_something"))
 
-	if resp.StatusCode != http.StatusUnauthorized {
-		resp.Body.Close()
-		t.Fatalf("Expected 401 for wrong-prefix API key, got %d", resp.StatusCode)
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusBadGateway {
+		body := readBody(t, resp)
+		t.Fatalf("Expected 200 or 502 (pass-through), got %d: %s", resp.StatusCode, body)
 	}
 	resp.Body.Close()
 }
 
-func TestAPIKeyEmpty(t *testing.T) {
+func TestBearerTokenEmptyPassthrough(t *testing.T) {
+	// Empty Bearer token passes through — backend decides response
 	resp := daemonRequest(t, "GET", "/",
 		withHeader("Authorization", "Bearer "))
 
-	if resp.StatusCode != http.StatusUnauthorized {
+	// Must not get a browser redirect (302) — that would mean daemon treated it as no-auth
+	if resp.StatusCode == http.StatusFound {
 		resp.Body.Close()
-		t.Fatalf("Expected 401 for empty Bearer token, got %d", resp.StatusCode)
+		t.Fatalf("Expected non-redirect for Bearer header, got 302")
 	}
 	resp.Body.Close()
 }

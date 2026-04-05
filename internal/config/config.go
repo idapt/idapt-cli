@@ -44,10 +44,6 @@ type Config struct {
 	// CLIBinaryURL is the URL to download CLI updates from.
 	CLIBinaryURL string `json:"cliBinaryUrl"`
 
-	// APIKeyHashes is a list of pre-registered API key SHA-256 hashes (hex-encoded).
-	// Loaded at startup into the APIKeyValidator. Used by cloud-init provisioning.
-	APIKeyHashes []string `json:"apiKeyHashes,omitempty"`
-
 	// Mounts defines FUSE mounts to auto-create on daemon start.
 	// Each mount maps a project to a local mount point.
 	Mounts []MountEntry `json:"mounts,omitempty"`

@@ -3,7 +3,6 @@ package auth
 import (
 	"crypto/hmac"
 	"crypto/sha256"
-	"encoding/hex"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -24,7 +23,6 @@ const (
 	mwTestAppURL    = "https://idapt.ai"
 	mwLocalDomain   = "tada.localhost:8443"
 	mwCookieName    = "idapt_machine_token"
-	mwTestAPIKey    = "mk_test-middleware-key-12345"
 )
 
 // mwValidClaims returns a standard set of valid JWT claims for middleware tests.
@@ -61,10 +59,6 @@ func newMWTestMiddlewareWithDomain(t *testing.T, domain, appURL string, publicPo
 		t.Fatalf("NewJWTValidator: %v", err)
 	}
 
-	apiKeyValidator := NewAPIKeyValidator()
-	hash := sha256.Sum256([]byte(mwTestAPIKey))
-	apiKeyValidator.AddKeyHash(hex.EncodeToString(hash[:]))
-
 	if publicPorts == nil {
 		publicPorts = map[int]bool{}
 	}
@@ -72,7 +66,7 @@ func newMWTestMiddlewareWithDomain(t *testing.T, domain, appURL string, publicPo
 
 	pages := errorpages.New(domain, appURL)
 
-	mw := NewMiddleware(jwtValidator, apiKeyValidator, portChecker, pages, domain, appURL)
+	mw := NewMiddleware(jwtValidator, portChecker, pages, domain, appURL)
 
 	signJWT := func(t *testing.T, claims map[string]interface{}) string {
 		t.Helper()
@@ -1072,65 +1066,77 @@ func TestCookieAuth_ClaimsInContext(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// H. API Key Authentication
+// H. Bearer Token Transparent Passthrough
 // ---------------------------------------------------------------------------
 
-func TestAPIKey_ValidBearer(t *testing.T) {
+func TestBearer_AnyToken_PassesThrough(t *testing.T) {
 	mw, _ := newMWTestMiddleware(t)
 
 	req := httptest.NewRequest("GET", "/api/data", nil)
-	req.Header.Set("Authorization", "Bearer "+mwTestAPIKey)
+	req.Header.Set("Authorization", "Bearer uk_some-user-key")
 	w := httptest.NewRecorder()
 
 	mw.Wrap(okHandler)(w, req)
 
 	if w.Code != http.StatusOK {
-		t.Errorf("status = %d, want %d (valid API key should pass through)", w.Code, http.StatusOK)
+		t.Errorf("status = %d, want %d (any Bearer token should pass through)", w.Code, http.StatusOK)
 	}
 }
 
-func TestAPIKey_InvalidBearer(t *testing.T) {
+func TestBearer_AKToken_PassesThrough(t *testing.T) {
 	mw, _ := newMWTestMiddleware(t)
 
 	req := httptest.NewRequest("GET", "/api/data", nil)
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Authorization", "Bearer mk_wrong-key-99999")
+	req.Header.Set("Authorization", "Bearer ak_agent-key-123")
 	w := httptest.NewRecorder()
 
 	mw.Wrap(okHandler)(w, req)
 
-	if w.Code == http.StatusOK {
-		t.Error("invalid API key should not pass through")
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d (ak_ Bearer token should pass through)", w.Code, http.StatusOK)
 	}
 }
 
-func TestAPIKey_NonMKBearer(t *testing.T) {
+func TestBearer_PKToken_PassesThrough(t *testing.T) {
 	mw, _ := newMWTestMiddleware(t)
 
 	req := httptest.NewRequest("GET", "/api/data", nil)
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Authorization", "Bearer uk_some-other-key")
+	req.Header.Set("Authorization", "Bearer pk_project-key-456")
 	w := httptest.NewRecorder()
 
 	mw.Wrap(okHandler)(w, req)
 
-	if w.Code == http.StatusOK {
-		t.Error("non-mk_ Bearer token should not pass through")
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d (pk_ Bearer token should pass through)", w.Code, http.StatusOK)
 	}
 }
 
-func TestAPIKey_EmptyBearer(t *testing.T) {
+func TestBearer_ArbitraryToken_PassesThrough(t *testing.T) {
 	mw, _ := newMWTestMiddleware(t)
 
 	req := httptest.NewRequest("GET", "/api/data", nil)
-	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Authorization", "Bearer some-arbitrary-token-value")
+	w := httptest.NewRecorder()
+
+	mw.Wrap(okHandler)(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d (arbitrary Bearer token should pass through)", w.Code, http.StatusOK)
+	}
+}
+
+func TestBearer_EmptyAfterPrefix_PassesThrough(t *testing.T) {
+	mw, _ := newMWTestMiddleware(t)
+
+	// "Bearer " with nothing after — still has the prefix, passes through
+	req := httptest.NewRequest("GET", "/api/data", nil)
 	req.Header.Set("Authorization", "Bearer ")
 	w := httptest.NewRecorder()
 
 	mw.Wrap(okHandler)(w, req)
 
-	if w.Code == http.StatusOK {
-		t.Error("empty Bearer token should not pass through")
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d (Bearer with empty token should pass through)", w.Code, http.StatusOK)
 	}
 }
 
@@ -1193,7 +1199,7 @@ func TestPriority_CallbackBeforeCookie(t *testing.T) {
 	}
 }
 
-func TestPriority_CookieBeforeAPIKey(t *testing.T) {
+func TestPriority_CookieBeforeBearer(t *testing.T) {
 	mw, signJWT := newMWTestMiddleware(t)
 	token := signJWT(t, mwValidClaims())
 
@@ -1205,7 +1211,7 @@ func TestPriority_CookieBeforeAPIKey(t *testing.T) {
 
 	req := httptest.NewRequest("GET", "/protected", nil)
 	req.AddCookie(&http.Cookie{Name: mwCookieName, Value: token})
-	req.Header.Set("Authorization", "Bearer "+mwTestAPIKey)
+	req.Header.Set("Authorization", "Bearer uk_some-key")
 	w := httptest.NewRecorder()
 
 	mw.Wrap(handler)(w, req)
@@ -1213,27 +1219,27 @@ func TestPriority_CookieBeforeAPIKey(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
 	}
-	// When cookie auth succeeds, claims should be in context (API key auth doesn't set claims)
+	// When cookie auth succeeds, claims should be in context (Bearer passthrough doesn't set claims)
 	if gotClaims == nil {
-		t.Fatal("expected claims from cookie auth, got nil (API key was used instead)")
+		t.Fatal("expected claims from cookie auth, got nil (Bearer was used instead)")
 	}
 	if gotClaims.Sub != mwTestActorID {
 		t.Errorf("Sub = %q, want %q", gotClaims.Sub, mwTestActorID)
 	}
 }
 
-func TestPriority_APIKeyWhenCookieInvalid(t *testing.T) {
+func TestPriority_BearerWhenCookieInvalid(t *testing.T) {
 	mw, _ := newMWTestMiddleware(t)
 
 	req := httptest.NewRequest("GET", "/protected", nil)
 	req.AddCookie(&http.Cookie{Name: mwCookieName, Value: "invalid-jwt-token"})
-	req.Header.Set("Authorization", "Bearer "+mwTestAPIKey)
+	req.Header.Set("Authorization", "Bearer uk_some-key")
 	w := httptest.NewRecorder()
 
 	mw.Wrap(okHandler)(w, req)
 
 	if w.Code != http.StatusOK {
-		t.Errorf("status = %d, want %d (API key should work when cookie is invalid)", w.Code, http.StatusOK)
+		t.Errorf("status = %d, want %d (Bearer should work when cookie is invalid)", w.Code, http.StatusOK)
 	}
 }
 

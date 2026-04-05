@@ -64,7 +64,10 @@ var apikeyCreateCmd = &cobra.Command{
 
 		if cmd.Flags().Changed("permissions") {
 			v, _ := cmd.Flags().GetString("permissions")
-			body["permissions"] = v
+			// Convert simple access level to Permission[] format
+			body["permissions"] = []map[string]interface{}{
+				{"resource": "*", "access": v},
+			}
 		}
 
 		var resp map[string]interface{}

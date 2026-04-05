@@ -95,10 +95,6 @@ func runServe(cmd *cobra.Command, args []string) error {
 		log.Printf("JWT validator initialized from static PEM key")
 	}
 
-	apiKeyValidator := auth.NewAPIKeyValidator()
-	for _, h := range cfg.APIKeyHashes {
-		apiKeyValidator.AddKeyHash(h)
-	}
 	fwManager := firewall.NewManager()
 	reverseProxy := proxy.New(cfg.DefaultBackendPort)
 	pages := errorpages.New(cfg.Domain, cfg.AppURL)
@@ -107,7 +103,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	proxyCfg := proxy.NewConfigManager(proxy.DefaultConfigPath)
 
 	// Auth middleware — uses proxy config for per-port auth mode (not firewall)
-	authMiddleware := auth.NewMiddleware(jwtValidator, apiKeyValidator, proxyCfg, pages, cfg.Domain, cfg.AppURL)
+	authMiddleware := auth.NewMiddleware(jwtValidator, proxyCfg, pages, cfg.Domain, cfg.AppURL)
 	if jwksFetcher != nil {
 		authMiddleware.SetJWKSFetcher(jwksFetcher)
 	}
@@ -183,15 +179,6 @@ func runServe(cmd *cobra.Command, args []string) error {
 				jwtValidator.SetMachineID(body.MachineID)
 				log.Printf("TEST MODE: machine ID updated to %s", body.MachineID)
 			}
-			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(`{"ok":true}`))
-		})
-		mux.HandleFunc("POST /__test/apikey", func(w http.ResponseWriter, r *http.Request) {
-			var body struct {
-				Hash string `json:"hash"`
-			}
-			json.NewDecoder(r.Body).Decode(&body)
-			apiKeyValidator.AddKeyHash(body.Hash)
 			w.WriteHeader(http.StatusOK)
 			w.Write([]byte(`{"ok":true}`))
 		})

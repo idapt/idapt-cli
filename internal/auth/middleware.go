@@ -24,7 +24,6 @@ const claimsKey contextKey = "claims"
 // Middleware handles authentication for incoming requests.
 type Middleware struct {
 	jwt         *JWTValidator
-	apiKey      *APIKeyValidator
 	portAuth    PublicPortChecker
 	pages       *errorpages.Pages
 	domain      string // Machine domain (e.g., "my-machine.idapt.app")
@@ -36,10 +35,9 @@ type Middleware struct {
 // portAuth determines which ports are public (no auth required) — typically the proxy config.
 // domain is the machine's subdomain (e.g., "my-machine.idapt.app").
 // appURL is the idapt app URL for auth redirects (e.g., "https://idapt.ai").
-func NewMiddleware(jwt *JWTValidator, apiKey *APIKeyValidator, portAuth PublicPortChecker, pages *errorpages.Pages, domain string, appURL string) *Middleware {
+func NewMiddleware(jwt *JWTValidator, portAuth PublicPortChecker, pages *errorpages.Pages, domain string, appURL string) *Middleware {
 	return &Middleware{
 		jwt:      jwt,
-		apiKey:   apiKey,
 		portAuth: portAuth,
 		pages:    pages,
 		domain:   domain,
@@ -94,19 +92,14 @@ func (m *Middleware) Wrap(next http.HandlerFunc) http.HandlerFunc {
 				next(w, r.WithContext(ctx))
 				return
 			}
-			// JWT invalid — fall through to try API key
+			// JWT invalid — fall through to try Bearer token
 		}
 
-		// Try Bearer token (API key)
+		// Pass through any Bearer token — app validates, not daemon
 		authHeader := r.Header.Get("Authorization")
 		if strings.HasPrefix(authHeader, "Bearer ") {
-			token := strings.TrimPrefix(authHeader, "Bearer ")
-			if strings.HasPrefix(token, APIKeyPrefix) {
-				if err := m.apiKey.Validate(token); err == nil {
-					next(w, r)
-					return
-				}
-			}
+			next(w, r)
+			return
 		}
 
 		// No valid auth — redirect browsers to auth endpoint, return 401 for API clients

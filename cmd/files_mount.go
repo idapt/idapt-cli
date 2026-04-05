@@ -57,6 +57,10 @@ func runFilesMount(cmd *cobra.Command, args []string) error {
 	// Resolve project to ID
 	projectID, err := resolveProjectID(cmd, client, project)
 	if err != nil {
+		// Hint at API key issues — common when using sudo
+		if strings.Contains(err.Error(), "Missing permission") || strings.Contains(err.Error(), "not accessible") {
+			return fmt.Errorf("resolve project: %w\n\nHint: Your API key may lack 'project:read' permission.\nIf using sudo, pass --api-key explicitly or use 'sudo -E' to preserve IDAPT_API_KEY.", err)
+		}
 		return fmt.Errorf("resolve project: %w", err)
 	}
 
@@ -76,6 +80,10 @@ func runFilesMount(cmd *cobra.Command, args []string) error {
 	mm := getMountManager()
 
 	if err := mm.Mount(cmd.Context(), cfg, fuseClient); err != nil {
+		// Hint at stale mount recovery
+		if strings.Contains(err.Error(), "Transport endpoint") || strings.Contains(err.Error(), "fusermount") {
+			return fmt.Errorf("mount: %w\n\nHint: A stale FUSE mount may exist. Run: fusermount3 -u %s", err, mountPoint)
+		}
 		return fmt.Errorf("mount: %w", err)
 	}
 

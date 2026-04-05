@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"fmt"
 	"os"
 
 	"github.com/idapt/idapt-cli/internal/api"
@@ -34,6 +35,13 @@ var rootCmd = &cobra.Command{
 		}
 		if apiKey == "" {
 			apiKey = creds.APIKey
+		}
+
+		// Warn if running as root (sudo) without explicit API key —
+		// sudo clears IDAPT_API_KEY unless -E is used, causing fallback
+		// to root's credentials file which may have a different key.
+		if apiKey == "" && os.Geteuid() == 0 {
+			fmt.Fprintln(cmd.ErrOrStderr(), "Warning: no API key found. If using sudo, pass --api-key or use sudo -E to preserve IDAPT_API_KEY.")
 		}
 
 		// Resolve API URL: flag > env > config > default
