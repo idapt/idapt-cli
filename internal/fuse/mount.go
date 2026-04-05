@@ -68,15 +68,19 @@ func (mm *MountManager) Mount(ctx context.Context, cfg MountConfig, apiClient *F
 		return fmt.Errorf("already mounted at %s", cfg.MountPoint)
 	}
 
-	// Ensure mount point exists
-	if err := os.MkdirAll(cfg.MountPoint, 0755); err != nil {
-		return fmt.Errorf("create mount point: %w", err)
-	}
-
-	// Try to clean up stale FUSE mount (crash recovery)
+	// Try to clean up stale FUSE mount BEFORE mkdir (crash recovery).
+	// A stale mount causes MkdirAll to fail with ENOTCONN/"file exists",
+	// so we must detect and clean up first.
 	if isStaleMount(cfg.MountPoint) {
 		log.Printf("fuse-mount: cleaning up stale mount at %s", cfg.MountPoint)
 		forceUnmount(cfg.MountPoint)
+		// Give the kernel a moment to release the mount point
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	// Ensure mount point exists (succeeds for existing directories)
+	if err := os.MkdirAll(cfg.MountPoint, 0755); err != nil {
+		return fmt.Errorf("create mount point: %w", err)
 	}
 
 	// Concurrent mount guard: flock on cache directory

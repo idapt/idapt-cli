@@ -111,7 +111,7 @@ func TestAuthLogout(t *testing.T) {
 func TestAuthStatus(t *testing.T) {
 	t.Run("authenticated user shown", func(t *testing.T) {
 		handler := mockHandler(map[string]func(w http.ResponseWriter, r *http.Request){
-			"GET /api/auth/account": func(w http.ResponseWriter, r *http.Request) {
+			"GET /api/auth/me": func(w http.ResponseWriter, r *http.Request) {
 				if r.Header.Get("x-api-key") != "test-key" {
 					t.Errorf("expected x-api-key header, got: %s", r.Header.Get("x-api-key"))
 				}
@@ -134,7 +134,7 @@ func TestAuthStatus(t *testing.T) {
 
 	t.Run("unauthenticated returns error", func(t *testing.T) {
 		handler := mockHandler(map[string]func(w http.ResponseWriter, r *http.Request){
-			"GET /api/auth/account": func(w http.ResponseWriter, r *http.Request) {
+			"GET /api/auth/me": func(w http.ResponseWriter, r *http.Request) {
 				jsonErrorResponse(w, 401, "Unauthorized")
 			},
 		})

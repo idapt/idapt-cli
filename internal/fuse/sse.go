@@ -4,11 +4,14 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
+	"github.com/idapt/idapt-cli/internal/api"
 	"github.com/idapt/idapt-cli/internal/cache"
 )
 
@@ -37,9 +40,12 @@ func NewSSESubscriber(apiClient *FuseAPIClient, metadataCache *cache.MetadataCac
 
 // Start connects to the SSE endpoint and processes events until stopped.
 // Reconnects with exponential backoff on connection loss.
+// After maxConsecutiveFailures, logs are suppressed to avoid flooding.
 func (s *SSESubscriber) Start(ctx context.Context) {
 	backoff := 1 * time.Second
 	maxBackoff := 60 * time.Second
+	consecutiveFailures := 0
+	const maxConsecutiveFailures = 10
 
 	for {
 		select {
@@ -52,7 +58,18 @@ func (s *SSESubscriber) Start(ctx context.Context) {
 
 		err := s.connect(ctx)
 		if err != nil {
-			log.Printf("fuse-sse: connection lost: %v — reconnecting in %v", err, backoff)
+			consecutiveFailures++
+			// Log every failure at first, then only every 10th to avoid flooding
+			if consecutiveFailures <= 3 || consecutiveFailures%10 == 0 {
+				log.Printf("fuse-sse: connection lost (%d failures): %v — reconnecting in %v", consecutiveFailures, err, backoff)
+			}
+			if consecutiveFailures == maxConsecutiveFailures {
+				log.Printf("fuse-sse: %d consecutive failures — suppressing further logs (TTL cache still active)", maxConsecutiveFailures)
+			}
+		} else {
+			// Successful connection that ended cleanly — reset backoff
+			backoff = 1 * time.Second
+			consecutiveFailures = 0
 		}
 
 		// On disconnect, invalidate all metadata to ensure freshness via TTL
@@ -81,15 +98,20 @@ func (s *SSESubscriber) Stop() {
 
 // connect establishes an SSE connection and reads events until error or stop.
 func (s *SSESubscriber) connect(ctx context.Context) error {
-	// Build SSE URL — uses the existing subscriptions endpoint
-	resp, err := s.apiClient.client.Do(ctx, "GET", "/api/subscriptions/files?projectId="+s.projectID, nil)
+	// Build SSE URL — pass projectId as a proper query parameter, not embedded in path.
+	// Embedding ?key=val in the path causes url.URL.Path to percent-encode the '?',
+	// resulting in a request to /api/subscriptions/files%3FprojectId%3D... which 404s.
+	resp, err := s.apiClient.client.Do(ctx, "GET", "/api/subscriptions/files", nil,
+		api.WithQuery(url.Values{"projectId": {s.projectID}}))
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return &sseError{status: resp.StatusCode}
+	// Verify we got an SSE stream, not an HTML error page
+	ct := resp.Header.Get("Content-Type")
+	if !strings.HasPrefix(ct, "text/event-stream") {
+		return fmt.Errorf("unexpected content-type %q (expected text/event-stream)", ct)
 	}
 
 	log.Printf("fuse-sse: connected to project %s event stream", s.projectID)

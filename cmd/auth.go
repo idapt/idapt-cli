@@ -87,7 +87,7 @@ var authStatusCmd = &cobra.Command{
 		}
 
 		var resp map[string]interface{}
-		if err := client.Get(cmd.Context(), "/api/auth/account", nil, &resp); err != nil {
+		if err := client.Get(cmd.Context(), "/api/auth/me", nil, &resp); err != nil {
 			return fmt.Errorf("not authenticated: %w", err)
 		}
 

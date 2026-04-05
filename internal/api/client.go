@@ -52,6 +52,11 @@ func NewClient(cfg ClientConfig) (*Client, error) {
 	}, nil
 }
 
+// APIKey returns the API key configured on this client (may be empty).
+func (c *Client) APIKey() string {
+	return c.apiKey
+}
+
 // SetErrOut sets the writer for verbose/debug output.
 func (c *Client) SetErrOut(w io.Writer) {
 	c.errOut = w
