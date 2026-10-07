@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "incremental": false,
+    "composite": false,
+    "baseUrl": ".",
+    "paths": {
+      "@idapt/api-contracts": ["../api-contracts/src/index.ts"],
+      "@idapt/api-contracts/*": ["../api-contracts/src/*"],
+      "@idapt/sdk": ["../sdk/src/index.ts"],
+      "@shared/*": ["../../shared/*"]
+    }
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["dist", "node_modules"]
+}
